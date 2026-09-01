@@ -88,6 +88,8 @@ export interface DVRSettings {
 
 export interface RadarrSettings extends DVRSettings {
   minimumAvailability: string;
+  // Whisparr V3 servers live in this list; see server/api/servarr/whisparr.ts
+  isWhisparr?: boolean;
 }
 
 export interface SonarrSettings extends DVRSettings {
@@ -198,6 +200,7 @@ interface FullPublicSettings extends PublicSettings {
   mediaServerLogin: boolean;
   movie4kEnabled: boolean;
   series4kEnabled: boolean;
+  adultEnabled: boolean;
   discoverRegion: string;
   streamingRegion: string;
   originalLanguage: string;
@@ -719,7 +722,10 @@ class Settings {
       jellyfinExternalHost: this.data.jellyfin.externalHostname,
       jellyfinForgotPasswordUrl: this.data.jellyfin.jellyfinForgotPasswordUrl,
       movie4kEnabled: this.data.radarr.some(
-        (radarr) => radarr.is4k && radarr.isDefault
+        (radarr) => radarr.is4k && radarr.isDefault && !radarr.isWhisparr
+      ),
+      adultEnabled: this.data.radarr.some(
+        (radarr) => radarr.isWhisparr && radarr.isDefault
       ),
       series4kEnabled: this.data.sonarr.some(
         (sonarr) => sonarr.is4k && sonarr.isDefault

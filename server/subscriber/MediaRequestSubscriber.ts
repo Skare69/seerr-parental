@@ -1,10 +1,10 @@
 import type { RadarrMovieOptions } from '@server/api/servarr/radarr';
-import RadarrAPI from '@server/api/servarr/radarr';
 import type {
   AddSeriesOptions,
   SonarrSeries,
 } from '@server/api/servarr/sonarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import { createMovieClient } from '@server/api/servarr/whisparr';
 import TheMovieDb from '@server/api/themoviedb';
 import { ANIME_KEYWORD_ID } from '@server/api/themoviedb/constants';
 import {
@@ -204,8 +204,18 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           return;
         }
 
+        const tmdb = new TheMovieDb();
+        // Adult titles belong on Whisparr, everything else on Radarr. The
+        // lookup is skipped entirely when no Whisparr server is configured.
+        const isAdult =
+          settings.radarr.some((radarr) => radarr.isWhisparr) &&
+          (await tmdb.getMovie({ movieId: entity.media.tmdbId })).adult;
+
         let radarrSettings = settings.radarr.find(
-          (radarr) => radarr.isDefault && radarr.is4k === entity.is4k
+          (radarr) =>
+            radarr.isDefault &&
+            radarr.is4k === entity.is4k &&
+            !!radarr.isWhisparr === isAdult
         );
 
         if (
@@ -227,12 +237,11 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
         }
 
         if (!radarrSettings) {
+          const serverType = `${entity.is4k ? '4K ' : ''}${
+            isAdult ? 'Whisparr' : 'Radarr'
+          }`;
           logger.warn(
-            `There is no default ${
-              entity.is4k ? '4K ' : ''
-            }Radarr server configured. Did you set any of your ${
-              entity.is4k ? '4K ' : ''
-            }Radarr servers as default?`,
+            `There is no default ${serverType} server configured. Did you set any of your ${serverType} servers as default?`,
             {
               label: 'Media Request',
               requestId: entity.id,
@@ -312,11 +321,7 @@ export class MediaRequestSubscriber implements EntitySubscriberInterface<MediaRe
           return;
         }
 
-        const tmdb = new TheMovieDb();
-        const radarr = new RadarrAPI({
-          apiKey: radarrSettings.apiKey,
-          url: RadarrAPI.buildUrl(radarrSettings, '/api/v3'),
-        });
+        const radarr = createMovieClient(radarrSettings);
         const movie = await tmdb.getMovie({ movieId: entity.media.tmdbId });
 
         if (radarrSettings.tagRequests) {

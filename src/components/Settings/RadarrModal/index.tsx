@@ -24,6 +24,8 @@ const messages = defineMessages('components.Settings.RadarrModal', {
   create4kradarr: 'Add New 4K Radarr Server',
   editradarr: 'Edit Radarr Server',
   edit4kradarr: 'Edit 4K Radarr Server',
+  createwhisparr: 'Add New Whisparr Server',
+  editwhisparr: 'Edit Whisparr Server',
   validationNameRequired: 'You must provide a server name',
   validationHostnameRequired: 'You must provide a valid hostname or IP address',
   validationPortRequired: 'You must provide a valid port number',
@@ -87,12 +89,20 @@ const messages = defineMessages('components.Settings.RadarrModal', {
 
 interface RadarrModalProps {
   radarr: RadarrSettings | null;
+  // Whisparr servers are Radarr servers with a different lookup and default port
+  isWhisparr?: boolean;
   onClose: () => void;
   onSave: () => void;
 }
 
-const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
+const RadarrModal = ({
+  onClose,
+  radarr,
+  isWhisparr,
+  onSave,
+}: RadarrModalProps) => {
   const intl = useIntl();
+  const whisparr = isWhisparr ?? radarr?.isWhisparr ?? false;
   const initialLoad = useRef(false);
   const { addToast } = useToasts();
   const [isValidated, setIsValidated] = useState(radarr ? true : false);
@@ -228,7 +238,7 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
         initialValues={{
           name: radarr?.name,
           hostname: radarr?.hostname,
-          port: radarr?.port ?? 7878,
+          port: radarr?.port ?? (whisparr ? 6969 : 7878),
           ssl: radarr?.useSsl ?? false,
           apiKey: radarr?.apiKey,
           baseUrl: radarr?.baseUrl,
@@ -268,6 +278,7 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
               syncEnabled: values.syncEnabled,
               preventSearch: !values.enableSearch,
               tagRequests: values.tagRequests,
+              isWhisparr: whisparr,
             };
             if (!radarr) {
               await axios.post('/api/v1/settings/radarr', submission);
@@ -334,15 +345,21 @@ const RadarrModal = ({ onClose, radarr, onSave }: RadarrModalProps) => {
               okDisabled={!isValidated || isSubmitting || isTesting || !isValid}
               onOk={() => handleSubmit()}
               title={
-                !radarr
+                whisparr
                   ? intl.formatMessage(
-                      values.is4k
-                        ? messages.create4kradarr
-                        : messages.createradarr
+                      radarr ? messages.editwhisparr : messages.createwhisparr
                     )
-                  : intl.formatMessage(
-                      values.is4k ? messages.edit4kradarr : messages.editradarr
-                    )
+                  : !radarr
+                    ? intl.formatMessage(
+                        values.is4k
+                          ? messages.create4kradarr
+                          : messages.createradarr
+                      )
+                    : intl.formatMessage(
+                        values.is4k
+                          ? messages.edit4kradarr
+                          : messages.editradarr
+                      )
               }
             >
               <div className="mb-6">

@@ -18,6 +18,7 @@ import {
   filterRestrictedResults,
   getEffectiveMaxRating,
 } from '@server/lib/parentalRatings';
+import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapProductionCompany } from '@server/models/Movie';
@@ -53,6 +54,7 @@ export const createTmdbWithRegionLanguage = (user?: User): TheMovieDb => {
   const tmdb = new TheMovieDb({
     discoverRegion,
     originalLanguage,
+    includeAdult: !!user?.hasPermission(Permission.REQUEST_ADULT),
   });
 
   const maxRating = user ? getEffectiveMaxRating(user) : null;

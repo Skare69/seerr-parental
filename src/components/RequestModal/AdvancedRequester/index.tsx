@@ -64,6 +64,7 @@ export type RequestOverrides = {
 interface AdvancedRequesterProps {
   type: 'movie' | 'tv';
   is4k: boolean;
+  isAdult?: boolean;
   isAnime?: boolean;
   defaultOverrides?: RequestOverrides;
   requestUser?: User;
@@ -74,6 +75,7 @@ interface AdvancedRequesterProps {
 const AdvancedRequester = ({
   type,
   is4k = false,
+  isAdult = false,
   isAnime = false,
   defaultOverrides,
   requestUser,
@@ -82,7 +84,7 @@ const AdvancedRequester = ({
 }: AdvancedRequesterProps) => {
   const intl = useIntl();
   const { user: currentUser, hasPermission: currentHasPermission } = useUser();
-  const { data, error } = useSWR<ServiceCommonServer[]>(
+  const { data: allServers, error } = useSWR<ServiceCommonServer[]>(
     `/api/v1/service/${type === 'movie' ? 'radarr' : 'sonarr'}`,
     {
       refreshInterval: 0,
@@ -90,6 +92,15 @@ const AdvancedRequester = ({
       revalidateOnFocus: false,
       revalidateOnMount: true,
     }
+  );
+  // Adult movies go to Whisparr and everything else to Radarr, so only the
+  // servers that can accept this request are selectable.
+  const data = useMemo(
+    () =>
+      allServers?.filter(
+        (server) => type !== 'movie' || !!server.isWhisparr === isAdult
+      ),
+    [allServers, type, isAdult]
   );
   const [selectedServer, setSelectedServer] = useState<number | null>(
     defaultOverrides?.server !== undefined && defaultOverrides?.server >= 0

@@ -290,6 +290,7 @@ const MovieRequestModal = ({
           <AdvancedRequester
             type="movie"
             is4k={is4k}
+            isAdult={data?.adult}
             requestUser={editRequest.requestedBy}
             defaultOverrides={{
               folder: editRequest.rootFolder,
@@ -363,6 +364,7 @@ const MovieRequestModal = ({
         <AdvancedRequester
           type="movie"
           is4k={is4k}
+          isAdult={data?.adult}
           quota={quota}
           onChange={(overrides) => {
             setRequestOverrides(overrides);

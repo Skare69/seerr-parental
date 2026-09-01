@@ -189,10 +189,16 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
    * params with this server-side age-rating cap.
    */
   public parentalFilter?: { country: string; maxCert: number };
+  private includeAdult: boolean;
   constructor({
     discoverRegion,
     originalLanguage,
-  }: { discoverRegion?: string; originalLanguage?: string } = {}) {
+    includeAdult = false,
+  }: {
+    discoverRegion?: string;
+    originalLanguage?: string;
+    includeAdult?: boolean;
+  } = {}) {
     super(
       'https://api.themoviedb.org/3',
       {
@@ -209,12 +215,13 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     this.locale = getSettings().main?.locale || 'en';
     this.discoverRegion = discoverRegion;
     this.originalLanguage = originalLanguage;
+    this.includeAdult = includeAdult;
   }
 
   public searchMulti = async ({
     query,
     page = 1,
-    includeAdult = false,
+    includeAdult = this.includeAdult,
     language = this.locale,
   }: SearchOptions): Promise<TmdbSearchMultiResponse> => {
     try {
@@ -236,7 +243,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   public searchMovies = async ({
     query,
     page = 1,
-    includeAdult = false,
+    includeAdult = this.includeAdult,
     language = this.locale,
     year,
   }: SingleSearchOptions): Promise<TmdbSearchMovieResponse> => {
@@ -265,7 +272,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   public searchTvShows = async ({
     query,
     page = 1,
-    includeAdult = false,
+    includeAdult = this.includeAdult,
     language = this.locale,
     year,
   }: SingleSearchOptions): Promise<TmdbSearchTvResponse> => {
@@ -691,7 +698,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   public getDiscoverMovies = async ({
     sortBy = 'popularity.desc',
     page = 1,
-    includeAdult = false,
+    includeAdult = this.includeAdult,
     includeVideo = true,
     language = this.locale,
     primaryReleaseDateGte,

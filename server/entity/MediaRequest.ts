@@ -169,6 +169,18 @@ export class MediaRequest {
       }
     }
 
+    // Adult titles are served by Whisparr and need their own permission
+    const isAdult =
+      requestBody.mediaType === MediaType.MOVIE &&
+      'adult' in tmdbMedia &&
+      tmdbMedia.adult;
+
+    if (isAdult && !requestUser.hasPermission(Permission.REQUEST_ADULT)) {
+      throw new RequestPermissionError(
+        'You do not have permission to make adult movie requests.'
+      );
+    }
+
     let media = await mediaRepository.findOne({
       where: {
         tmdbId: requestBody.mediaId,
@@ -270,9 +282,12 @@ export class MediaRequest {
     let tags = requestBody.tags;
 
     if (useOverrides) {
-      const defaultRadarrId = requestBody.is4k
-        ? settings.radarr.find((r) => r.is4k && r.isDefault)?.id
-        : settings.radarr.find((r) => !r.is4k && r.isDefault)?.id;
+      const defaultRadarrId = settings.radarr.find(
+        (r) =>
+          r.is4k === !!requestBody.is4k &&
+          r.isDefault &&
+          !!r.isWhisparr === isAdult
+      )?.id;
       const defaultSonarrId = requestBody.is4k
         ? settings.sonarr.find((s) => s.is4k && s.isDefault)?.id
         : settings.sonarr.find((s) => !s.is4k && s.isDefault)?.id;

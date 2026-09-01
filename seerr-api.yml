@@ -614,6 +614,9 @@ components:
         minimumAvailability:
           type: string
           example: 'In Cinema'
+        isWhisparr:
+          type: boolean
+          example: false
         isDefault:
           type: boolean
           example: false

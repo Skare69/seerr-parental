@@ -1,5 +1,6 @@
-import RadarrAPI from '@server/api/servarr/radarr';
+import type RadarrAPI from '@server/api/servarr/radarr';
 import SonarrAPI from '@server/api/servarr/sonarr';
+import { createMovieClient } from '@server/api/servarr/whisparr';
 import TautulliAPI from '@server/api/tautulli';
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaStatus, MediaType } from '@server/constants/media';
@@ -259,10 +260,7 @@ mediaRoutes.delete(
 
       let service;
       if (isMovie) {
-        service = new RadarrAPI({
-          apiKey: serviceSettings?.apiKey,
-          url: RadarrAPI.buildUrl(serviceSettings, '/api/v3'),
-        });
+        service = createMovieClient(serviceSettings);
       } else {
         service = new SonarrAPI({
           apiKey: serviceSettings?.apiKey,

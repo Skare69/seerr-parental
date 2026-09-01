@@ -20,6 +20,7 @@ serviceRoutes.get('/radarr', async (req, res) => {
       name: radarr.name,
       is4k: radarr.is4k,
       isDefault: radarr.isDefault,
+      isWhisparr: radarr.isWhisparr,
       activeDirectory: radarr.activeDirectory,
       activeProfileId: radarr.activeProfileId,
       activeTags: radarr.tags ?? [],

@@ -50,6 +50,10 @@ const messages = defineMessages('components.Settings', {
   overrideRulesDescription:
     'Override rules allow you to specify properties that will be replaced if a request matches the rule.',
   addrule: 'New Override Rule',
+  whisparrsettings: 'Whisparr Settings',
+  addwhisparr: 'Add Whisparr Server',
+  whisparrSettingsDescription:
+    'Whisparr handles adult movies. Requests for titles TMDB flags as adult are sent to the default Whisparr server instead of Radarr, and require the "Request Adult Content" permission.',
 });
 
 interface ServerInstanceProps {
@@ -217,9 +221,12 @@ const SettingsServices = () => {
   } = useSWR<SonarrSettings[]>('/api/v1/settings/sonarr');
   const { data: rules, mutate: revalidate } =
     useSWR<OverrideRuleResultsResponse>('/api/v1/overrideRule');
+  const radarrServers = radarrData?.filter((radarr) => !radarr.isWhisparr);
+  const whisparrServers = radarrData?.filter((radarr) => radarr.isWhisparr);
   const [editRadarrModal, setEditRadarrModal] = useState<{
     open: boolean;
     radarr: RadarrSettings | null;
+    isWhisparr?: boolean;
   }>({
     open: false,
     radarr: null,
@@ -233,7 +240,7 @@ const SettingsServices = () => {
   });
   const [deleteServerModal, setDeleteServerModal] = useState<{
     open: boolean;
-    type: 'radarr' | 'sonarr';
+    type: 'radarr' | 'whisparr' | 'sonarr';
     serverId: number | null;
   }>({
     open: false,
@@ -250,7 +257,9 @@ const SettingsServices = () => {
 
   const deleteServer = async () => {
     await axios.delete(
-      `/api/v1/settings/${deleteServerModal.type}/${deleteServerModal.serverId}`
+      `/api/v1/settings/${
+        deleteServerModal.type === 'sonarr' ? 'sonarr' : 'radarr'
+      }/${deleteServerModal.serverId}`
     );
     setDeleteServerModal({ open: false, serverId: null, type: 'radarr' });
     revalidateRadarr();
@@ -279,6 +288,7 @@ const SettingsServices = () => {
       {editRadarrModal.open && (
         <RadarrModal
           radarr={editRadarrModal.radarr}
+          isWhisparr={editRadarrModal.isWhisparr}
           onClose={() => {
             if (!overrideRuleModal.open)
               setEditRadarrModal({ open: false, radarr: null });
@@ -327,25 +337,26 @@ const SettingsServices = () => {
           }
           title={intl.formatMessage(messages.deleteServer, {
             serverType:
-              deleteServerModal.type === 'radarr' ? 'Radarr' : 'Sonarr',
+              deleteServerModal.type.charAt(0).toUpperCase() +
+              deleteServerModal.type.slice(1),
           })}
         >
           {intl.formatMessage(messages.deleteserverconfirm)}
         </Modal>
       </Transition>
       <div className="section">
-        {!radarrData && !radarrError && <LoadingSpinner />}
-        {radarrData && !radarrError && (
+        {!radarrServers && !radarrError && <LoadingSpinner />}
+        {radarrServers && !radarrError && (
           <>
-            {radarrData.length > 0 &&
-              (!radarrData.some((radarr) => radarr.isDefault) ? (
+            {radarrServers.length > 0 &&
+              (!radarrServers.some((radarr) => radarr.isDefault) ? (
                 <Alert
                   title={intl.formatMessage(messages.noDefaultServer, {
                     serverType: 'Radarr',
                     mediaType: intl.formatMessage(messages.mediaTypeMovie),
                   })}
                 />
-              ) : !radarrData.some(
+              ) : !radarrServers.some(
                   (radarr) => radarr.isDefault && !radarr.is4k
                 ) ? (
                 <Alert
@@ -359,8 +370,8 @@ const SettingsServices = () => {
                   })}
                 />
               ) : (
-                radarrData.some((radarr) => radarr.is4k) &&
-                !radarrData.some(
+                radarrServers.some((radarr) => radarr.is4k) &&
+                !radarrServers.some(
                   (radarr) => radarr.isDefault && radarr.is4k
                 ) && (
                   <Alert
@@ -372,7 +383,7 @@ const SettingsServices = () => {
                 )
               ))}
             <ul className="grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-              {radarrData.map((radarr) => (
+              {radarrServers.map((radarr) => (
                 <ServerInstance
                   key={`radarr-config-${radarr.id}`}
                   name={radarr.name}
@@ -404,6 +415,76 @@ const SettingsServices = () => {
                   >
                     <PlusIcon />
                     <span>{intl.formatMessage(messages.addradarr)}</span>
+                  </Button>
+                </div>
+              </li>
+            </ul>
+          </>
+        )}
+      </div>
+      <div className="mb-6 mt-10">
+        <h3 className="heading">
+          {intl.formatMessage(messages.whisparrsettings)}
+        </h3>
+        <p className="description">
+          {intl.formatMessage(messages.whisparrSettingsDescription)}
+        </p>
+      </div>
+      <div className="section">
+        {whisparrServers && !radarrError && (
+          <>
+            {whisparrServers.length > 0 &&
+              !whisparrServers.some((whisparr) => whisparr.isDefault) && (
+                <Alert
+                  title={intl.formatMessage(messages.noDefaultServer, {
+                    serverType: 'Whisparr',
+                    mediaType: intl.formatMessage(messages.mediaTypeMovie),
+                  })}
+                />
+              )}
+            <ul className="grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+              {whisparrServers.map((whisparr) => (
+                <ServerInstance
+                  key={`whisparr-config-${whisparr.id}`}
+                  name={whisparr.name}
+                  hostname={whisparr.hostname}
+                  port={whisparr.port}
+                  profileName={whisparr.activeProfileName}
+                  isSSL={whisparr.useSsl}
+                  isDefault={whisparr.isDefault}
+                  is4k={whisparr.is4k}
+                  externalUrl={whisparr.externalUrl}
+                  onEdit={() =>
+                    setEditRadarrModal({
+                      open: true,
+                      radarr: whisparr,
+                      isWhisparr: true,
+                    })
+                  }
+                  onDelete={() =>
+                    setDeleteServerModal({
+                      open: true,
+                      serverId: whisparr.id,
+                      type: 'whisparr',
+                    })
+                  }
+                />
+              ))}
+              <li className="col-span-1 h-32 rounded-lg border-2 border-dashed border-gray-400 shadow sm:h-44">
+                <div className="flex h-full w-full items-center justify-center">
+                  <Button
+                    buttonType="ghost"
+                    className="mb-3 mt-3"
+                    onClick={() =>
+                      setEditRadarrModal({
+                        open: true,
+                        radarr: null,
+                        isWhisparr: true,
+                      })
+                    }
+                  >
+                    <PlusIcon />
+                    <span>{intl.formatMessage(messages.addwhisparr)}</span>
                   </Button>
                 </div>
               </li>
