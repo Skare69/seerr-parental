@@ -7,6 +7,9 @@
     min-height: calc(100% + env(safe-area-inset-top));
     padding: env(safe-area-inset-top) env(safe-area-inset-right)
       calc(4rem + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+    /* dark-only UI: makes native widgets (date picker, form controls,
+       scrollbars) follow the theme. One line to flip if a light theme lands. */
+    color-scheme: dark;
     scrollbar-width: thin;
     scrollbar-color: #4b5563 #1f2937;
   }
@@ -320,8 +323,6 @@
   select,
   textarea {
     @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-white transition duration-150 ease-in-out sm:text-sm sm:leading-5;
-    /* native widgets (date picker, autofill) follow the dark theme */
-    color-scheme: dark;
   }
 
   input.rounded-l-only,
