@@ -119,8 +119,11 @@ userSettingsRoutes.post<
       user.movieQuotaLimit = req.body.movieQuotaLimit;
       user.tvQuotaDays = req.body.tvQuotaDays;
       user.tvQuotaLimit = req.body.tvQuotaLimit;
+    }
 
-      // Parental limits: admin-only, same gate as quota overrides
+    // Parental limits: any admin may set these, on any account including their
+    // own. A non-admin editing themselves can never lift their own cap.
+    if (req.user?.hasPermission(Permission.MANAGE_USERS)) {
       user.maxParentalRating = req.body.maxParentalRating ?? null;
       user.dateOfBirth = req.body.dateOfBirth || null;
     }

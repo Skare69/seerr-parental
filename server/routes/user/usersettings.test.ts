@@ -132,3 +132,65 @@ describe('POST /user/:id/settings/linked-accounts/jellyfin/quickconnect', () => 
     assert.strictEqual(user.jellyfinUserId, null);
   });
 });
+
+describe('POST /user/:id/settings/main parental limits', () => {
+  const settingsBody = (overrides: Record<string, unknown>) => ({
+    username: '',
+    email: '',
+    locale: '',
+    discoverRegion: '',
+    streamingRegion: '',
+    originalLanguage: '',
+    movieQuotaLimit: null,
+    movieQuotaDays: null,
+    tvQuotaLimit: null,
+    tvQuotaDays: null,
+    watchlistSyncMovies: false,
+    watchlistSyncTv: false,
+    ...overrides,
+  });
+
+  it('lets an admin set parental limits on their own account', async () => {
+    const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
+
+    const res = await agent.post(`/user/${userId}/settings/main`).send(
+      settingsBody({
+        username: 'admin',
+        email: 'admin@seerr.dev',
+        maxParentalRating: 12,
+        dateOfBirth: '2019-04-01',
+      })
+    );
+
+    assert.strictEqual(res.status, 200);
+    const user = await getRepository(User).findOneOrFail({
+      where: { id: userId },
+    });
+    assert.strictEqual(user.maxParentalRating, 12);
+    assert.strictEqual(user.dateOfBirth, '2019-04-01');
+  });
+
+  it('ignores parental limits sent by a non-admin editing themselves', async () => {
+    const repo = getRepository(User);
+    const capped = await repo.findOneOrFail({
+      where: { email: 'friend@seerr.dev' },
+    });
+    capped.maxParentalRating = 6;
+    await repo.save(capped);
+
+    const { agent, userId } = await loginAs('friend@seerr.dev', 'test1234');
+
+    const res = await agent.post(`/user/${userId}/settings/main`).send(
+      settingsBody({
+        username: 'friend',
+        email: 'friend@seerr.dev',
+        maxParentalRating: null,
+        dateOfBirth: null,
+      })
+    );
+
+    assert.strictEqual(res.status, 200);
+    const user = await repo.findOneOrFail({ where: { id: userId } });
+    assert.strictEqual(user.maxParentalRating, 6);
+  });
+});

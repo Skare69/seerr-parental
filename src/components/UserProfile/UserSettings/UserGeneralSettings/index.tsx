@@ -513,55 +513,59 @@ const UserGeneralSettings = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="form-row">
-                      <label htmlFor="maxParentalRating" className="text-label">
-                        <span>{intl.formatMessage(messages.maxagerating)}</span>
-                        <span className="label-tip">
-                          {intl.formatMessage(messages.maxageratingTip)}
-                        </span>
-                      </label>
-                      <div className="form-input-area">
-                        <div className="form-input-field">
-                          <select
-                            id="maxParentalRating"
-                            name="maxParentalRating"
-                            value={values.maxParentalRating}
-                            onChange={(e) =>
-                              setFieldValue('maxParentalRating', e.target.value)
-                            }
-                          >
-                            <option value="">
-                              {intl.formatMessage(messages.unrestricted)}
-                            </option>
-                            {[0, 6, 12, 16, 18].map((rating) => (
-                              <option value={rating} key={`rating-${rating}`}>
-                                {`FSK ${rating}`}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="dateOfBirth" className="text-label">
-                        <span>{intl.formatMessage(messages.dateofbirth)}</span>
-                      </label>
-                      <div className="form-input-area">
-                        <div className="form-input-field">
-                          <input
-                            type="date"
-                            id="dateOfBirth"
-                            name="dateOfBirth"
-                            value={values.dateOfBirth}
-                            onChange={(e) =>
-                              setFieldValue('dateOfBirth', e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
                   </>
                 )}
+              {currentHasPermission(Permission.MANAGE_USERS) && (
+                <>
+                  <div className="form-row">
+                    <label htmlFor="maxParentalRating" className="text-label">
+                      <span>{intl.formatMessage(messages.maxagerating)}</span>
+                      <span className="label-tip">
+                        {intl.formatMessage(messages.maxageratingTip)}
+                      </span>
+                    </label>
+                    <div className="form-input-area">
+                      <div className="form-input-field">
+                        <select
+                          id="maxParentalRating"
+                          name="maxParentalRating"
+                          value={values.maxParentalRating}
+                          onChange={(e) =>
+                            setFieldValue('maxParentalRating', e.target.value)
+                          }
+                        >
+                          <option value="">
+                            {intl.formatMessage(messages.unrestricted)}
+                          </option>
+                          {[0, 6, 12, 16, 18].map((rating) => (
+                            <option value={rating} key={`rating-${rating}`}>
+                              {`FSK ${rating}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <label htmlFor="dateOfBirth" className="text-label">
+                      <span>{intl.formatMessage(messages.dateofbirth)}</span>
+                    </label>
+                    <div className="form-input-area">
+                      <div className="form-input-field">
+                        <input
+                          type="date"
+                          id="dateOfBirth"
+                          name="dateOfBirth"
+                          value={values.dateOfBirth}
+                          onChange={(e) =>
+                            setFieldValue('dateOfBirth', e.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
               {hasPermission(
                 [Permission.AUTO_REQUEST, Permission.AUTO_REQUEST_MOVIE],
                 { type: 'or' }
