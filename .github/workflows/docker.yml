@@ -2,7 +2,7 @@ name: Docker Image
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
     tags: ['v*']
   workflow_dispatch:
 
@@ -45,7 +45,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # arm64 costs ~40min under QEMU; only the deployed branch needs it
+          platforms: ${{ github.ref_name == 'main' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
