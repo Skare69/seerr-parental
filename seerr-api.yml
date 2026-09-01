@@ -231,6 +231,12 @@ components:
           pattern: '^\d{4}-\d{2}-\d{2}$'
           description: 'Date of birth (YYYY-MM-DD). When set, the cap is derived from the age and rises at each birthday.'
           example: '2019-04-01'
+        blockedGenres:
+          type: array
+          description: 'TMDB genre ids hidden from this user, applied on top of the age cap. Movie and TV genre ids share one space.'
+          items:
+            type: integer
+          example: [10752, 10768]
         effectiveMaxRating:
           type: number
           nullable: true
@@ -5514,6 +5520,9 @@ paths:
         `maxParentalRating` and `dateOfBirth` are mutually exclusive: when a
         date of birth is supplied it derives the cap (and raises it at each
         birthday), and any fixed rating sent alongside it is cleared.
+
+        `blockedGenres` is independent of both: it applies whatever the age
+        cap is, and an omitted or empty list clears it.
       tags:
         - users
       parameters:

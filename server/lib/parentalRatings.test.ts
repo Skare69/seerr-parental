@@ -1,5 +1,5 @@
-import type { TmdbCertificationResponse } from '@server/api/themoviedb';
 import type TheMovieDb from '@server/api/themoviedb';
+import type { TmdbCertificationResponse } from '@server/api/themoviedb';
 import type {
   TmdbMovieDetails,
   TmdbTvDetails,
@@ -8,9 +8,12 @@ import type { User } from '@server/entity/User';
 import {
   capToCertification,
   extractCertNumber,
+  filterRestrictedResults,
   fskFromAge,
+  getBlockedGenres,
   getEffectiveMaxRating,
   isOverCap,
+  isTitleBlocked,
 } from '@server/lib/parentalRatings';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -148,6 +151,97 @@ describe('isOverCap', () => {
     assert.equal(isOverCap(16, 12), true);
     assert.equal(isOverCap(12, 12), false);
     assert.equal(isOverCap(0, 6), false);
+  });
+});
+
+describe('getBlockedGenres', () => {
+  it('parses stored ids and survives the empty simple-array round trip', () => {
+    assert.deepEqual(
+      getBlockedGenres(fakeUser({ blockedGenres: ['10752', '99'] })),
+      [10752, 99]
+    );
+    // TypeORM hands back [''] for a column that was saved empty.
+    assert.deepEqual(getBlockedGenres(fakeUser({ blockedGenres: [''] })), []);
+    assert.deepEqual(getBlockedGenres(fakeUser({})), []);
+    assert.deepEqual(getBlockedGenres(undefined), []);
+  });
+});
+
+describe('isTitleBlocked', () => {
+  // FSK 0 war documentary: allowed by every age cap, blocked by genre.
+  const warDoc = {
+    genres: [
+      { id: 99, name: 'Documentary' },
+      { id: 10752, name: 'War' },
+    ],
+    release_dates: {
+      results: [{ iso_3166_1: 'DE', release_dates: [{ certification: '0' }] }],
+    },
+  } as unknown as TmdbMovieDetails;
+
+  it('blocks a blocked genre regardless of the age rating', () => {
+    const user = fakeUser({ blockedGenres: ['10752'], dateOfBirth: null });
+    assert.equal(getEffectiveMaxRating(user), null);
+    assert.equal(isTitleBlocked(user, 'movie', warDoc), true);
+  });
+
+  it('lets the same title through for a user without that genre blocked', () => {
+    const user = fakeUser({ blockedGenres: ['878'], maxParentalRating: 6 });
+    assert.equal(isTitleBlocked(user, 'movie', warDoc), false);
+  });
+
+  it('still enforces the age cap when no genre matches', () => {
+    const adult = {
+      genres: [{ id: 27, name: 'Horror' }],
+      release_dates: {
+        results: [
+          { iso_3166_1: 'DE', release_dates: [{ certification: '18' }] },
+        ],
+      },
+    } as unknown as TmdbMovieDetails;
+    const user = fakeUser({ blockedGenres: ['10752'], maxParentalRating: 12 });
+    assert.equal(isTitleBlocked(user, 'movie', adult), true);
+  });
+
+  it('allows everything for an unrestricted user', () => {
+    assert.equal(isTitleBlocked(fakeUser({}), 'movie', warDoc), false);
+    assert.equal(isTitleBlocked(undefined, 'movie', warDoc), false);
+  });
+});
+
+describe('filterRestrictedResults', () => {
+  it('drops blocked genres without asking TMDB for details', async () => {
+    let calls = 0;
+    const tmdb = {
+      getMovie: async () => {
+        calls++;
+        return {} as TmdbMovieDetails;
+      },
+      getTvShow: async () => {
+        calls++;
+        return {} as TmdbTvDetails;
+      },
+    } as unknown as TheMovieDb;
+
+    const results = [
+      { id: 1, mediaType: 'movie', genreIds: [99, 10752] },
+      { id: 2, mediaType: 'tv', genreIds: [10768] },
+      { id: 3, mediaType: 'movie', genreIds: [16] },
+      { id: 4, mediaType: 'person' },
+    ];
+
+    const kept = await filterRestrictedResults(
+      fakeUser({ blockedGenres: ['10752', '10768'] }),
+      tmdb,
+      results
+    );
+
+    assert.deepEqual(
+      kept.map((r) => r.id),
+      [3, 4]
+    );
+    // No age cap set, so nothing should have triggered a certification lookup.
+    assert.equal(calls, 0);
   });
 });
 

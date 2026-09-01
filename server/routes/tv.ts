@@ -8,10 +8,8 @@ import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
 import {
-  extractCertNumber,
   filterRestrictedResults,
-  getEffectiveMaxRating,
-  isOverCap,
+  isTitleBlocked,
 } from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import { mapTvResult } from '@server/models/Search';
@@ -28,14 +26,10 @@ tvRoutes.get('/:id', async (req, res, next) => {
       tvId: Number(req.params.id),
     });
 
-    const maxRating = getEffectiveMaxRating(req.user);
-    if (
-      maxRating !== null &&
-      isOverCap(extractCertNumber('tv', tmdbTv), maxRating)
-    ) {
+    if (isTitleBlocked(req.user, 'tv', tmdbTv)) {
       return next({
         status: 403,
-        message: 'This title exceeds the allowed maximum age rating.',
+        message: 'This title is not available for this user.',
       });
     }
     const metadataProvider = tmdbTv.keywords.results.some(
@@ -95,14 +89,10 @@ tvRoutes.get('/:id/season/:seasonNumber', async (req, res, next) => {
       ? await getMetadataProvider('anime')
       : await getMetadataProvider('tv');
 
-    const maxRating = getEffectiveMaxRating(req.user);
-    if (
-      maxRating !== null &&
-      isOverCap(extractCertNumber('tv', tmdbTv), maxRating)
-    ) {
+    if (isTitleBlocked(req.user, 'tv', tmdbTv)) {
       return next({
         status: 403,
-        message: 'This title exceeds the allowed maximum age rating.',
+        message: 'This title is not available for this user.',
       });
     }
 

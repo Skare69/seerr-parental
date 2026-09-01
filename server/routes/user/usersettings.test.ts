@@ -6,6 +6,7 @@ import { MediaServerType } from '@server/constants/server';
 import { UserType } from '@server/constants/user';
 import { getRepository } from '@server/datasource';
 import { User } from '@server/entity/User';
+import { getBlockedGenres } from '@server/lib/parentalRatings';
 import { getSettings } from '@server/lib/settings';
 import { checkUser, isAuthenticated } from '@server/middleware/auth';
 import authRoutes from '@server/routes/auth';
@@ -189,6 +190,30 @@ describe('POST /user/:id/settings/parental', () => {
     const user = await repo.findOneOrFail({ where: { id: userId } });
     assert.strictEqual(user.maxParentalRating, null);
     assert.strictEqual(user.dateOfBirth, null);
+  });
+
+  it('round-trips blocked genres and clears them with an empty list', async () => {
+    const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
+    const repo = getRepository(User);
+
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ blockedGenres: [10752, 99] });
+
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body.blockedGenres, [10752, 99]);
+
+    const saved = await repo.findOneOrFail({ where: { id: userId } });
+    assert.deepStrictEqual(getBlockedGenres(saved), [10752, 99]);
+
+    // An empty list must read back as "nothing blocked", not as [''].
+    const cleared = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ blockedGenres: [] });
+
+    assert.deepStrictEqual(cleared.body.blockedGenres, []);
+    const after = await repo.findOneOrFail({ where: { id: userId } });
+    assert.deepStrictEqual(getBlockedGenres(after), []);
   });
 
   it('refuses parental changes from a non-admin, including on themselves', async () => {

@@ -185,10 +185,16 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   private originalLanguage?: string;
 
   /**
-   * When set, discover endpoints override any caller-supplied certification
-   * params with this server-side age-rating cap.
+   * When set, discover endpoints apply this server-side parental gate: the
+   * age cap overrides any caller-supplied certification params, and blocked
+   * genres are excluded outright (TMDB honours `without_genres` on both
+   * discover endpoints, unlike `certification.lte`).
    */
-  public parentalFilter?: { country: string; maxCert: number };
+  public parentalFilter?: {
+    country: string;
+    maxCert: number | null;
+    blockedGenres?: number[];
+  };
   constructor({
     discoverRegion,
     originalLanguage,
@@ -725,9 +731,11 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         .toISOString()
         .split('T')[0];
 
-      const parentalLte = this.parentalFilter
-        ? await capToCertification(this, 'movie', this.parentalFilter.maxCert)
-        : undefined;
+      const parentalCap = this.parentalFilter?.maxCert ?? null;
+      const parentalLte =
+        parentalCap !== null
+          ? await capToCertification(this, 'movie', parentalCap)
+          : undefined;
 
       const data = await this.get<TmdbSearchMovieResponse>('/discover/movie', {
         params: {
@@ -765,9 +773,12 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           'vote_count.lte': voteCountLte,
           watch_region: watchRegion,
           with_watch_providers: watchProviders,
-          ...(this.parentalFilter
+          without_genres: this.parentalFilter?.blockedGenres?.length
+            ? this.parentalFilter.blockedGenres.join(',')
+            : undefined,
+          ...(parentalLte
             ? {
-                certification_country: this.parentalFilter.country,
+                certification_country: this.parentalFilter?.country,
                 'certification.lte': parentalLte,
               }
             : {
@@ -824,9 +835,11 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         .toISOString()
         .split('T')[0];
 
-      const parentalLte = this.parentalFilter
-        ? await capToCertification(this, 'tv', this.parentalFilter.maxCert)
-        : undefined;
+      const parentalCap = this.parentalFilter?.maxCert ?? null;
+      const parentalLte =
+        parentalCap !== null
+          ? await capToCertification(this, 'tv', parentalCap)
+          : undefined;
 
       const data = await this.get<TmdbSearchTvResponse>('/discover/tv', {
         params: {
@@ -864,9 +877,12 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           with_watch_providers: watchProviders,
           watch_region: watchRegion,
           with_status: withStatus,
-          ...(this.parentalFilter
+          without_genres: this.parentalFilter?.blockedGenres?.length
+            ? this.parentalFilter.blockedGenres.join(',')
+            : undefined,
+          ...(parentalLte
             ? {
-                certification_country: this.parentalFilter.country,
+                certification_country: this.parentalFilter?.country,
                 'certification.lte': parentalLte,
               }
             : {
@@ -878,13 +894,13 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         },
       });
 
-      if (this.parentalFilter) {
-        const { maxCert } = this.parentalFilter;
+      if (parentalCap !== null) {
         // TMDB ignores certification filters on discover/tv, so post-filter.
+        // Blocked genres need no pass: `without_genres` works here.
         const kept = await Promise.all(
           data.results.map(async (result) => {
             const cert = await titleCertNumber(this, 'tv', result.id);
-            return isOverCap(cert, maxCert) ? null : result;
+            return isOverCap(cert, parentalCap) ? null : result;
           })
         );
         data.results = kept.filter(

@@ -11,7 +11,10 @@ import type {
   UserSettingsNotificationsResponse,
   UserSettingsParentalResponse,
 } from '@server/interfaces/api/userSettingsInterfaces';
-import { getEffectiveMaxRating } from '@server/lib/parentalRatings';
+import {
+  getBlockedGenres,
+  getEffectiveMaxRating,
+} from '@server/lib/parentalRatings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -799,6 +802,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsParentalResponse>(
       return res.status(200).json({
         maxParentalRating: user.maxParentalRating ?? null,
         dateOfBirth: user.dateOfBirth ?? null,
+        blockedGenres: getBlockedGenres(user),
         effectiveMaxRating: getEffectiveMaxRating(user),
       });
     } catch (e) {
@@ -810,7 +814,11 @@ userSettingsRoutes.get<{ id: string }, UserSettingsParentalResponse>(
 userSettingsRoutes.post<
   { id: string },
   UserSettingsParentalResponse,
-  { maxParentalRating?: number | null; dateOfBirth?: string | null }
+  {
+    maxParentalRating?: number | null;
+    dateOfBirth?: string | null;
+    blockedGenres?: number[];
+  }
 >(
   '/parental',
   isAuthenticated(Permission.MANAGE_USERS),
@@ -835,11 +843,21 @@ userSettingsRoutes.post<
         ? null
         : (req.body.maxParentalRating ?? null);
 
+      // Genre ids are independent of the age cap: a 0+ war documentary is
+      // still a war documentary.
+      const blockedGenres = Array.isArray(req.body.blockedGenres)
+        ? req.body.blockedGenres.filter((id) => Number.isInteger(id))
+        : [];
+      user.blockedGenres = blockedGenres.length
+        ? blockedGenres.map(String)
+        : null;
+
       await userRepository.save(user);
 
       return res.status(200).json({
         maxParentalRating: user.maxParentalRating,
         dateOfBirth: user.dateOfBirth,
+        blockedGenres: getBlockedGenres(user),
         effectiveMaxRating: getEffectiveMaxRating(user),
       });
     } catch (e) {

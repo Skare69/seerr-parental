@@ -16,6 +16,7 @@ import type {
 import {
   PARENTAL_COUNTRY,
   filterRestrictedResults,
+  getBlockedGenres,
   getEffectiveMaxRating,
 } from '@server/lib/parentalRatings';
 import { getSettings } from '@server/lib/settings';
@@ -56,8 +57,13 @@ export const createTmdbWithRegionLanguage = (user?: User): TheMovieDb => {
   });
 
   const maxRating = user ? getEffectiveMaxRating(user) : null;
-  if (maxRating !== null) {
-    tmdb.parentalFilter = { country: PARENTAL_COUNTRY, maxCert: maxRating };
+  const blockedGenres = getBlockedGenres(user);
+  if (maxRating !== null || blockedGenres.length) {
+    tmdb.parentalFilter = {
+      country: PARENTAL_COUNTRY,
+      maxCert: maxRating,
+      blockedGenres,
+    };
   }
 
   return tmdb;
@@ -877,20 +883,23 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
         language: (req.query.language as string) ?? req.locale,
       });
 
+      const blockedGenres = getBlockedGenres(req.user);
       await Promise.all(
-        genres.map(async (genre) => {
-          const genreData = await tmdb.getDiscoverMovies({
-            genre: genre.id.toString(),
-          });
+        genres
+          .filter((genre) => !blockedGenres.includes(genre.id))
+          .map(async (genre) => {
+            const genreData = await tmdb.getDiscoverMovies({
+              genre: genre.id.toString(),
+            });
 
-          mappedGenres.push({
-            id: genre.id,
-            name: genre.name,
-            backdrops: genreData.results
-              .filter((title) => !!title.backdrop_path)
-              .map((title) => title.backdrop_path) as string[],
-          });
-        })
+            mappedGenres.push({
+              id: genre.id,
+              name: genre.name,
+              backdrops: genreData.results
+                .filter((title) => !!title.backdrop_path)
+                .map((title) => title.backdrop_path) as string[],
+            });
+          })
       );
 
       const sortedData = sortBy(mappedGenres, 'name');
@@ -921,20 +930,23 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
         language: (req.query.language as string) ?? req.locale,
       });
 
+      const blockedGenres = getBlockedGenres(req.user);
       await Promise.all(
-        genres.map(async (genre) => {
-          const genreData = await tmdb.getDiscoverTv({
-            genre: genre.id.toString(),
-          });
+        genres
+          .filter((genre) => !blockedGenres.includes(genre.id))
+          .map(async (genre) => {
+            const genreData = await tmdb.getDiscoverTv({
+              genre: genre.id.toString(),
+            });
 
-          mappedGenres.push({
-            id: genre.id,
-            name: genre.name,
-            backdrops: genreData.results
-              .filter((title) => !!title.backdrop_path)
-              .map((title) => title.backdrop_path) as string[],
-          });
-        })
+            mappedGenres.push({
+              id: genre.id,
+              name: genre.name,
+              backdrops: genreData.results
+                .filter((title) => !!title.backdrop_path)
+                .map((title) => title.backdrop_path) as string[],
+            });
+          })
       );
 
       const sortedData = sortBy(mappedGenres, 'name');
