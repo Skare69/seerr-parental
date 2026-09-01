@@ -146,6 +146,14 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   public dateOfBirth?: string | null;
 
+  /**
+   * TMDB genre ids this user may not see. Movie and TV genre ids share one
+   * space (99 = Documentary in both) and never collide, so one flat list
+   * covers both. Empty/null = nothing blocked.
+   */
+  @Column({ type: 'simple-array', nullable: true })
+  public blockedGenres?: string[] | null;
+
   @OneToOne(() => UserSettings, (settings) => settings.user, {
     cascade: true,
     eager: true,

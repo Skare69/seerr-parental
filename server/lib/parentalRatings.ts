@@ -94,20 +94,55 @@ export async function titleCertNumber(
 }
 
 /**
+ * TMDB genre ids barred for this user; empty = nothing blocked. Guards the
+ * `simple-array` round trip, which turns an empty list into `['']`.
+ */
+export function getBlockedGenres(user?: User): number[] {
+  return (
+    user?.blockedGenres
+      ?.map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0) ?? []
+  );
+}
+
+/**
+ * Single gate for the detail and request boundaries: a title is barred when
+ * it carries a blocked genre or sits above the user's age cap.
+ */
+export function isTitleBlocked(
+  user: User | undefined,
+  mediaType: 'movie' | 'tv',
+  details: TmdbMovieDetails | TmdbTvDetails
+): boolean {
+  const blocked = getBlockedGenres(user);
+  if (details.genres?.some((genre) => blocked.includes(genre.id))) {
+    return true;
+  }
+
+  const cap = getEffectiveMaxRating(user);
+  return cap !== null && isOverCap(extractCertNumber(mediaType, details), cap);
+}
+
+/**
  * Post-fetch redaction for endpoints TMDB cannot filter server-side
  * (search, trending, recommendations, similar). Persons/collections pass
  * through — the content itself is gated by the detail/request checks.
  */
 export async function filterRestrictedResults<
-  T extends { id: number; mediaType: string },
+  T extends { id: number; mediaType: string; genreIds?: number[] },
 >(user: User | undefined, tmdb: TheMovieDb, results: T[]): Promise<T[]> {
   const cap = getEffectiveMaxRating(user);
-  if (cap === null) return results;
+  const blocked = getBlockedGenres(user);
+  if (cap === null && !blocked.length) return results;
   const kept = await Promise.all(
     results.map(async (result) => {
       if (result.mediaType !== 'movie' && result.mediaType !== 'tv') {
         return result;
       }
+      // Genre ids ride along on every result, so this rejects for free —
+      // and skips the certification lookup below.
+      if (result.genreIds?.some((id) => blocked.includes(id))) return null;
+      if (cap === null) return result;
       const cert = await titleCertNumber(tmdb, result.mediaType, result.id);
       return isOverCap(cert, cap) ? null : result;
     })

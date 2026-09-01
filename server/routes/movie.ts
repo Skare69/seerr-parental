@@ -7,10 +7,8 @@ import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
 import {
-  extractCertNumber,
   filterRestrictedResults,
-  getEffectiveMaxRating,
-  isOverCap,
+  isTitleBlocked,
 } from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import { mapMovieDetails } from '@server/models/Movie';
@@ -28,14 +26,10 @@ movieRoutes.get('/:id', async (req, res, next) => {
       language: (req.query.language as string) ?? req.locale,
     });
 
-    const maxRating = getEffectiveMaxRating(req.user);
-    if (
-      maxRating !== null &&
-      isOverCap(extractCertNumber('movie', tmdbMovie), maxRating)
-    ) {
+    if (isTitleBlocked(req.user, 'movie', tmdbMovie)) {
       return next({
         status: 403,
-        message: 'This title exceeds the allowed maximum age rating.',
+        message: 'This title is not available for this user.',
       });
     }
     const media = await Media.getMedia(tmdbMovie.id, MediaType.MOVIE);

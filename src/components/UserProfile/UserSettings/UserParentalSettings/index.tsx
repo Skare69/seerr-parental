@@ -8,6 +8,7 @@ import ErrorPage from '@app/pages/_error';
 import defineMessages from '@app/utils/defineMessages';
 import { Label, Radio, RadioGroup } from '@headlessui/react';
 import { ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
+import type { TmdbGenre } from '@server/api/themoviedb/interfaces';
 import type { UserSettingsParentalResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import { fskFromDob } from '@server/lib/fskAge';
 import axios from 'axios';
@@ -15,6 +16,7 @@ import { Form, Formik } from 'formik';
 import { useRouter } from 'next/router';
 import type { MessageDescriptor } from 'react-intl';
 import { useIntl } from 'react-intl';
+import Select from 'react-select';
 import useSWR from 'swr';
 
 const messages = defineMessages(
@@ -37,6 +39,10 @@ const messages = defineMessages(
     maxagerating: 'Maximum Age Rating',
     currentlimit: 'Current limit',
     currentlimitUnrestricted: 'Unrestricted — no titles are hidden',
+    blockedgenres: 'Blocked Genres',
+    blockedgenresTip:
+      'Titles in these genres are hidden and cannot be requested, whatever their age rating',
+    selectgenres: 'Select genres…',
     currentlimitValue: 'FSK {rating} — higher-rated titles are hidden',
     toastSettingsSuccess: 'Parental controls saved successfully!',
     toastSettingsFailure: 'Something went wrong while saving settings.',
@@ -87,6 +93,11 @@ const UserParentalSettings = () => {
     user ? `/api/v1/user/${user.id}/settings/parental` : null
   );
 
+  // Movie and TV genre ids share one space, so one blocklist covers both;
+  // the two lists differ though (War 10752 vs War & Politics 10768).
+  const { data: movieGenres } = useSWR<TmdbGenre[]>('/api/v1/genres/movie');
+  const { data: tvGenres } = useSWR<TmdbGenre[]>('/api/v1/genres/tv');
+
   if (!data && !error) {
     return <LoadingSpinner />;
   }
@@ -100,6 +111,11 @@ const UserParentalSettings = () => {
     : data.maxParentalRating != null
       ? 'fixed'
       : 'none';
+
+  const genreOptions = [...(movieGenres ?? []), ...(tvGenres ?? [])]
+    .filter((genre, i, all) => all.findIndex((g) => g.id === genre.id) === i)
+    .map((genre) => ({ label: genre.name, value: genre.id }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   return (
     <>
@@ -126,12 +142,13 @@ const UserParentalSettings = () => {
             data.maxParentalRating != null
               ? String(data.maxParentalRating)
               : '',
+          blockedGenres: data.blockedGenres ?? [],
         }}
         enableReinitialize
         onSubmit={async (values) => {
-          // Exactly one field is ever sent: the two limits are alternatives,
-          // never a combination. The server applies the same rule.
-          const payload =
+          // Exactly one age limit is ever sent: the two are alternatives,
+          // never a combination. The genre blocklist is independent of both.
+          const limits =
             values.limitSource === 'dob'
               ? {
                   dateOfBirth: values.dateOfBirth || null,
@@ -146,6 +163,7 @@ const UserParentalSettings = () => {
                         : Number(values.maxParentalRating),
                   }
                 : { dateOfBirth: null, maxParentalRating: null };
+          const payload = { ...limits, blockedGenres: values.blockedGenres };
 
           try {
             await axios.post(
@@ -319,6 +337,34 @@ const UserParentalSettings = () => {
                           rating: effective,
                         })}
                   </span>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label htmlFor="blockedGenres" className="text-label">
+                  <span>{intl.formatMessage(messages.blockedgenres)}</span>
+                  <span className="label-tip">
+                    {intl.formatMessage(messages.blockedgenresTip)}
+                  </span>
+                </label>
+                <div className="form-input-area">
+                  <Select
+                    inputId="blockedGenres"
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    isMulti
+                    options={genreOptions}
+                    value={genreOptions.filter((option) =>
+                      values.blockedGenres.includes(option.value)
+                    )}
+                    onChange={(selected) =>
+                      setFieldValue(
+                        'blockedGenres',
+                        selected.map((option) => option.value)
+                      )
+                    }
+                    placeholder={intl.formatMessage(messages.selectgenres)}
+                  />
                 </div>
               </div>
 

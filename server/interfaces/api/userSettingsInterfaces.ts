@@ -24,6 +24,8 @@ export interface UserSettingsParentalResponse {
   maxParentalRating?: number | null;
   /** ISO date (YYYY-MM-DD); when set it derives the cap and ages up by itself. */
   dateOfBirth?: string | null;
+  /** TMDB genre ids hidden from this user, independent of the age cap. */
+  blockedGenres?: number[];
   /** What those two fields currently resolve to; null = unrestricted. */
   effectiveMaxRating?: number | null;
 }

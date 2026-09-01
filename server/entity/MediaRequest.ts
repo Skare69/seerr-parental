@@ -12,9 +12,7 @@ import type { MediaRequestBody } from '@server/interfaces/api/requestInterfaces'
 import notificationManager, { Notification } from '@server/lib/notifications';
 import {
   ParentalRestrictionError,
-  extractCertNumber,
-  getEffectiveMaxRating,
-  isOverCap,
+  isTitleBlocked,
 } from '@server/lib/parentalRatings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
@@ -150,23 +148,23 @@ export class MediaRequest {
         ? await tmdb.getMovie({ movieId: requestBody.mediaId })
         : await tmdb.getTvShow({ tvId: requestBody.mediaId });
 
-    const maxRating = getEffectiveMaxRating(requestUser);
-    if (maxRating !== null && !user.hasPermission(Permission.MANAGE_REQUESTS)) {
-      const cert = extractCertNumber(
+    if (
+      !user.hasPermission(Permission.MANAGE_REQUESTS) &&
+      isTitleBlocked(
+        requestUser,
         requestBody.mediaType as 'movie' | 'tv',
         tmdbMedia
+      )
+    ) {
+      logger.warn('Request for media blocked by parental limits', {
+        tmdbId: tmdbMedia.id,
+        mediaType: requestBody.mediaType,
+        requestedFor: requestUser.id,
+        label: 'Media Request',
+      });
+      throw new ParentalRestrictionError(
+        'This title is not available for this user.'
       );
-      if (isOverCap(cert, maxRating)) {
-        logger.warn('Request for media blocked due to age rating', {
-          tmdbId: tmdbMedia.id,
-          mediaType: requestBody.mediaType,
-          requestedFor: requestUser.id,
-          label: 'Media Request',
-        });
-        throw new ParentalRestrictionError(
-          'This title exceeds the maximum age rating allowed for this user.'
-        );
-      }
     }
 
     // Adult titles are served by Whisparr and need their own permission
