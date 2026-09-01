@@ -6,12 +6,14 @@ import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import ErrorPage from '@app/pages/_error';
 import defineMessages from '@app/utils/defineMessages';
+import { Label, Radio, RadioGroup } from '@headlessui/react';
 import { ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
 import type { UserSettingsParentalResponse } from '@server/interfaces/api/userSettingsInterfaces';
 import { fskFromDob } from '@server/lib/fskAge';
 import axios from 'axios';
 import { Form, Formik } from 'formik';
 import { useRouter } from 'next/router';
+import type { MessageDescriptor } from 'react-intl';
 import { useIntl } from 'react-intl';
 import useSWR from 'swr';
 
@@ -20,20 +22,22 @@ const messages = defineMessages(
   {
     parentalControls: 'Parental Controls',
     description:
-      'Choose how this user\u2019s age limit is set. A date of birth keeps itself current; a fixed rating never changes on its own.',
+      'Choose how this user’s age limit is set. A date of birth keeps itself current; a fixed rating never changes on its own.',
     limitSource: 'Age Limit',
     limitSourceNone: 'Unrestricted',
+    limitSourceNoneTip: 'No titles are hidden for this user',
     limitSourceDob: 'From date of birth',
+    limitSourceDobTip:
+      'Derived from the age and raised automatically at each birthday',
     limitSourceFixed: 'Fixed rating',
+    limitSourceFixedTip: 'Stays where you set it until you change it',
     limitSourceTip:
       'Titles above the resulting rating are hidden in discovery and search, and requests for them are refused',
     dateofbirth: 'Date of Birth',
-    dateofbirthTip:
-      'The limit follows the age and rises automatically at each birthday',
     maxagerating: 'Maximum Age Rating',
     currentlimit: 'Current limit',
-    currentlimitUnrestricted: 'Unrestricted \u2014 no titles are hidden',
-    currentlimitValue: 'FSK {rating} \u2014 higher-rated titles are hidden',
+    currentlimitUnrestricted: 'Unrestricted — no titles are hidden',
+    currentlimitValue: 'FSK {rating} — higher-rated titles are hidden',
     toastSettingsSuccess: 'Parental controls saved successfully!',
     toastSettingsFailure: 'Something went wrong while saving settings.',
   }
@@ -41,7 +45,32 @@ const messages = defineMessages(
 
 type LimitSource = 'none' | 'dob' | 'fixed';
 
+const LIMIT_SOURCES: {
+  value: LimitSource;
+  label: MessageDescriptor;
+  tip: MessageDescriptor;
+}[] = [
+  {
+    value: 'none',
+    label: messages.limitSourceNone,
+    tip: messages.limitSourceNoneTip,
+  },
+  {
+    value: 'dob',
+    label: messages.limitSourceDob,
+    tip: messages.limitSourceDobTip,
+  },
+  {
+    value: 'fixed',
+    label: messages.limitSourceFixed,
+    tip: messages.limitSourceFixedTip,
+  },
+];
+
 const FSK_TIERS = [0, 6, 12, 16, 18];
+
+/** Sensible starting point when switching to a hand-picked rating. */
+const DEFAULT_FIXED_RATING = '12';
 
 const UserParentalSettings = () => {
   const intl = useIntl();
@@ -85,14 +114,18 @@ const UserParentalSettings = () => {
         <h3 className="heading">
           {intl.formatMessage(messages.parentalControls)}
         </h3>
-        <p className="description">{intl.formatMessage(messages.description)}</p>
+        <p className="description">
+          {intl.formatMessage(messages.description)}
+        </p>
       </div>
       <Formik
         initialValues={{
           limitSource: initialSource,
           dateOfBirth: data.dateOfBirth ?? '',
           maxParentalRating:
-            data.maxParentalRating != null ? String(data.maxParentalRating) : '',
+            data.maxParentalRating != null
+              ? String(data.maxParentalRating)
+              : '',
         }}
         enableReinitialize
         onSubmit={async (values) => {
@@ -100,7 +133,10 @@ const UserParentalSettings = () => {
           // never a combination. The server applies the same rule.
           const payload =
             values.limitSource === 'dob'
-              ? { dateOfBirth: values.dateOfBirth || null, maxParentalRating: null }
+              ? {
+                  dateOfBirth: values.dateOfBirth || null,
+                  maxParentalRating: null,
+                }
               : values.limitSource === 'fixed'
                 ? {
                     dateOfBirth: null,
@@ -136,40 +172,91 @@ const UserParentalSettings = () => {
           const effective =
             values.limitSource === 'dob'
               ? fskFromDob(values.dateOfBirth)
-              : values.limitSource === 'fixed' && values.maxParentalRating !== ''
+              : values.limitSource === 'fixed' &&
+                  values.maxParentalRating !== ''
                 ? Number(values.maxParentalRating)
                 : null;
 
           return (
             <Form className="section">
               <div className="form-row">
-                <label htmlFor="limitSource" className="text-label">
-                  <span>{intl.formatMessage(messages.limitSource)}</span>
+                <span className="text-label">
+                  {intl.formatMessage(messages.limitSource)}
                   <span className="label-tip">
                     {intl.formatMessage(messages.limitSourceTip)}
                   </span>
-                </label>
+                </span>
                 <div className="form-input-area">
-                  <div className="form-input-field">
-                    <select
-                      id="limitSource"
-                      name="limitSource"
-                      value={values.limitSource}
-                      onChange={(e) =>
-                        setFieldValue('limitSource', e.target.value)
+                  <RadioGroup
+                    value={values.limitSource}
+                    onChange={(next: LimitSource) => {
+                      setFieldValue('limitSource', next);
+                      if (next === 'fixed' && values.maxParentalRating === '') {
+                        setFieldValue(
+                          'maxParentalRating',
+                          DEFAULT_FIXED_RATING
+                        );
                       }
-                    >
-                      <option value="none">
-                        {intl.formatMessage(messages.limitSourceNone)}
-                      </option>
-                      <option value="dob">
-                        {intl.formatMessage(messages.limitSourceDob)}
-                      </option>
-                      <option value="fixed">
-                        {intl.formatMessage(messages.limitSourceFixed)}
-                      </option>
-                    </select>
-                  </div>
+                    }}
+                  >
+                    <Label className="sr-only">
+                      {intl.formatMessage(messages.limitSource)}
+                    </Label>
+                    <div className="-space-y-px overflow-hidden rounded-md bg-gray-800/30">
+                      {LIMIT_SOURCES.map((option, index) => (
+                        <Radio
+                          key={option.value}
+                          as="div"
+                          value={option.value}
+                          className={({ checked }) =>
+                            `${index === 0 ? 'rounded-t-md' : ''} ${
+                              index === LIMIT_SOURCES.length - 1
+                                ? 'rounded-b-md'
+                                : ''
+                            } ${
+                              checked
+                                ? 'z-10 border border-indigo-500 bg-indigo-400/20'
+                                : 'border-gray-500'
+                            } relative flex cursor-pointer border p-4 focus:outline-none`
+                          }
+                        >
+                          {({ focus, checked }) => (
+                            <>
+                              <span
+                                className={`${
+                                  checked
+                                    ? 'border-transparent bg-indigo-600'
+                                    : 'border-gray-300 bg-white'
+                                } ${
+                                  focus
+                                    ? 'ring-2 ring-indigo-300 ring-offset-2'
+                                    : ''
+                                } mt-0.5 flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full border`}
+                                aria-hidden="true"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                              </span>
+                              <div className="ml-3 flex flex-col">
+                                <Label
+                                  as="span"
+                                  className={`block text-sm font-medium ${
+                                    checked
+                                      ? 'text-indigo-100'
+                                      : 'text-gray-100'
+                                  }`}
+                                >
+                                  {intl.formatMessage(option.label)}
+                                </Label>
+                                <span className="block text-xs text-gray-400">
+                                  {intl.formatMessage(option.tip)}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </Radio>
+                      ))}
+                    </div>
+                  </RadioGroup>
                 </div>
               </div>
 
@@ -177,9 +264,6 @@ const UserParentalSettings = () => {
                 <div className="form-row">
                   <label htmlFor="dateOfBirth" className="text-label">
                     <span>{intl.formatMessage(messages.dateofbirth)}</span>
-                    <span className="label-tip">
-                      {intl.formatMessage(messages.dateofbirthTip)}
-                    </span>
                   </label>
                   <div className="form-input-area">
                     <div className="form-input-field">
@@ -212,9 +296,6 @@ const UserParentalSettings = () => {
                           setFieldValue('maxParentalRating', e.target.value)
                         }
                       >
-                        <option value="">
-                          {intl.formatMessage(messages.limitSourceNone)}
-                        </option>
                         {FSK_TIERS.map((rating) => (
                           <option value={rating} key={`rating-${rating}`}>
                             {`FSK ${rating}`}
