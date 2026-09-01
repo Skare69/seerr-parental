@@ -233,7 +233,7 @@ components:
           example: '2019-04-01'
         blockedGenres:
           type: array
-          description: 'TMDB genre ids hidden from this user, applied on top of the age cap. Movie and TV genre ids share one space.'
+          description: 'TMDB genre ids hidden from this user, applied on top of the age cap. Movie and TV genre ids share one space. While the list is non-empty, titles TMDB has left untagged are hidden as well: an unchecked genre fails closed, exactly as an unknown certification does against the age cap.'
           items:
             type: integer
           example: [10752, 10768]
@@ -5522,7 +5522,8 @@ paths:
         birthday), and any fixed rating sent alongside it is cleared.
 
         `blockedGenres` is independent of both: it applies whatever the age
-        cap is, and an omitted or empty list clears it.
+        cap is, and an omitted or empty list clears it. A non-empty list also
+        hides untagged titles, whose genres cannot be checked.
       tags:
         - users
       parameters:

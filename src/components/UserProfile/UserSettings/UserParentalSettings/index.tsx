@@ -41,7 +41,7 @@ const messages = defineMessages(
     currentlimitUnrestricted: 'Unrestricted — no titles are hidden',
     blockedgenres: 'Blocked Genres',
     blockedgenresTip:
-      'Titles in these genres are hidden and cannot be requested, whatever their age rating',
+      'Titles in these genres are hidden and cannot be requested, whatever their age rating. While any genre is blocked, titles with no genre listed are hidden too, since they cannot be checked',
     selectgenres: 'Select genres…',
     currentlimitValue: 'FSK {rating} — higher-rated titles are hidden',
     toastSettingsSuccess: 'Parental controls saved successfully!',

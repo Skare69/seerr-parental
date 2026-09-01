@@ -4,6 +4,7 @@ import type { CacheStore } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
 import {
   capToCertification,
+  genreBlocked,
   isOverCap,
   titleCertNumber,
 } from '@server/lib/parentalRatings';
@@ -790,6 +791,14 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         },
       });
 
+      const blockedGenres = this.parentalFilter?.blockedGenres ?? [];
+      if (blockedGenres.length) {
+        // `without_genres` cannot exclude a title carrying no genres at all.
+        data.results = data.results.filter(
+          (r) => !genreBlocked(r.genre_ids, blockedGenres)
+        );
+      }
+
       return data;
     } catch (e) {
       throw new Error(`[TMDB] Failed to fetch discover movies: ${e.message}`, {
@@ -894,9 +903,16 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         },
       });
 
+      const blockedGenres = this.parentalFilter?.blockedGenres ?? [];
+      if (blockedGenres.length) {
+        // `without_genres` cannot exclude a title carrying no genres at all.
+        data.results = data.results.filter(
+          (r) => !genreBlocked(r.genre_ids, blockedGenres)
+        );
+      }
+
       if (parentalCap !== null) {
         // TMDB ignores certification filters on discover/tv, so post-filter.
-        // Blocked genres need no pass: `without_genres` works here.
         const kept = await Promise.all(
           data.results.map(async (result) => {
             const cert = await titleCertNumber(this, 'tv', result.id);

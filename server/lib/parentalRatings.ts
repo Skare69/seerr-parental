@@ -106,6 +106,20 @@ export function getBlockedGenres(user?: User): number[] {
 }
 
 /**
+ * Whether a title's genres bar it for this user. An untagged title is an
+ * unknown one, and unknown fails closed — the same rule the age cap already
+ * applies to a missing certification. Both only bite once the parent has
+ * actually restricted something.
+ */
+export function genreBlocked(
+  genreIds: number[] | undefined,
+  blocked: number[]
+): boolean {
+  if (!blocked.length) return false;
+  return !genreIds?.length || genreIds.some((id) => blocked.includes(id));
+}
+
+/**
  * Single gate for the detail and request boundaries: a title is barred when
  * it carries a blocked genre or sits above the user's age cap.
  */
@@ -115,7 +129,12 @@ export function isTitleBlocked(
   details: TmdbMovieDetails | TmdbTvDetails
 ): boolean {
   const blocked = getBlockedGenres(user);
-  if (details.genres?.some((genre) => blocked.includes(genre.id))) {
+  if (
+    genreBlocked(
+      details.genres?.map((genre) => genre.id),
+      blocked
+    )
+  ) {
     return true;
   }
 
@@ -141,7 +160,7 @@ export async function filterRestrictedResults<
       }
       // Genre ids ride along on every result, so this rejects for free —
       // and skips the certification lookup below.
-      if (result.genreIds?.some((id) => blocked.includes(id))) return null;
+      if (genreBlocked(result.genreIds, blocked)) return null;
       if (cap === null) return result;
       const cert = await titleCertNumber(tmdb, result.mediaType, result.id);
       return isOverCap(cert, cap) ? null : result;

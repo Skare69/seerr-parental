@@ -207,6 +207,37 @@ describe('isTitleBlocked', () => {
     assert.equal(isTitleBlocked(fakeUser({}), 'movie', warDoc), false);
     assert.equal(isTitleBlocked(undefined, 'movie', warDoc), false);
   });
+
+  it('hides an untagged title, but only while a genre is blocked', () => {
+    const untagged = {
+      genres: [],
+      release_dates: {
+        results: [
+          { iso_3166_1: 'DE', release_dates: [{ certification: '0' }] },
+        ],
+      },
+    } as unknown as TmdbMovieDetails;
+
+    // FSK 0 and no genre match, so only the untagged rule can bar it.
+    assert.equal(
+      isTitleBlocked(fakeUser({ blockedGenres: ['10752'] }), 'movie', untagged),
+      true
+    );
+    // A missing genres key is the same unknown as an empty one.
+    assert.equal(
+      isTitleBlocked(
+        fakeUser({ blockedGenres: ['10752'] }),
+        'movie',
+        {} as TmdbMovieDetails
+      ),
+      true
+    );
+    // This parent blocked no genre, so nothing is left unchecked.
+    assert.equal(
+      isTitleBlocked(fakeUser({ maxParentalRating: 6 }), 'movie', untagged),
+      false
+    );
+  });
 });
 
 describe('filterRestrictedResults', () => {
@@ -242,6 +273,37 @@ describe('filterRestrictedResults', () => {
     );
     // No age cap set, so nothing should have triggered a certification lookup.
     assert.equal(calls, 0);
+  });
+
+  it('drops untagged results, leaving persons and collections alone', async () => {
+    const tmdb = {} as unknown as TheMovieDb;
+    const results = [
+      { id: 1, mediaType: 'movie', genreIds: [] },
+      { id: 2, mediaType: 'tv' },
+      { id: 3, mediaType: 'movie', genreIds: [16] },
+      { id: 4, mediaType: 'person' },
+      { id: 5, mediaType: 'collection' },
+    ];
+
+    const restricted = await filterRestrictedResults(
+      fakeUser({ blockedGenres: ['10752'] }),
+      tmdb,
+      results
+    );
+    assert.deepEqual(
+      restricted.map((r) => r.id),
+      [3, 4, 5]
+    );
+
+    const unrestricted = await filterRestrictedResults(
+      fakeUser({}),
+      tmdb,
+      results
+    );
+    assert.deepEqual(
+      unrestricted.map((r) => r.id),
+      [1, 2, 3, 4, 5]
+    );
   });
 });
 
