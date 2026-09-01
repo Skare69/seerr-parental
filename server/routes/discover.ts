@@ -837,12 +837,16 @@ discoverRoutes.get<{ keywordId: string }>(
         page: data.page,
         totalPages: data.total_pages,
         totalResults: data.total_results,
-        results: data.results.map((result) =>
-          mapMovieResult(
-            result,
-            media.find(
-              (med) =>
-                med.tmdbId === result.id && med.mediaType === MediaType.MOVIE
+        results: await filterRestrictedResults(
+          req.user,
+          tmdb,
+          data.results.map((result) =>
+            mapMovieResult(
+              result,
+              media.find(
+                (med) =>
+                  med.tmdbId === result.id && med.mediaType === MediaType.MOVIE
+              )
             )
           )
         ),

@@ -1603,7 +1603,7 @@
   "components.UserProfile.UserSettings.UserNotificationSettings.validationTelegramMessageThreadId": "The thread/topic ID must be a positive whole number",
   "components.UserProfile.UserSettings.UserNotificationSettings.webpush": "Web Push",
   "components.UserProfile.UserSettings.UserParentalSettings.blockedgenres": "Blocked Genres",
-  "components.UserProfile.UserSettings.UserParentalSettings.blockedgenresTip": "Titles in these genres are hidden and cannot be requested, whatever their age rating",
+  "components.UserProfile.UserSettings.UserParentalSettings.blockedgenresTip": "Titles in these genres are hidden and cannot be requested, whatever their age rating. While any genre is blocked, titles with no genre listed are hidden too, since they cannot be checked",
   "components.UserProfile.UserSettings.UserParentalSettings.currentlimit": "Current limit",
   "components.UserProfile.UserSettings.UserParentalSettings.currentlimitUnrestricted": "Unrestricted — no titles are hidden",
   "components.UserProfile.UserSettings.UserParentalSettings.currentlimitValue": "FSK {rating} — higher-rated titles are hidden",
