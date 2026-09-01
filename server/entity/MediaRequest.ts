@@ -8,6 +8,12 @@ import { getRepository } from '@server/datasource';
 import type { MediaRequestBody } from '@server/interfaces/api/requestInterfaces';
 import notificationManager, { Notification } from '@server/lib/notifications';
 import overrideRules from '@server/lib/overrideRules';
+import {
+  ParentalRestrictionError,
+  extractCertNumber,
+  getEffectiveMaxRating,
+  isOverCap,
+} from '@server/lib/parentalRatings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -170,6 +176,25 @@ export class MediaRequest {
       requestBody.mediaType === MediaType.MOVIE
         ? await tmdb.getMovie({ movieId: requestBody.mediaId })
         : await tmdb.getTvShow({ tvId: requestBody.mediaId });
+
+    const maxRating = getEffectiveMaxRating(requestUser);
+    if (maxRating !== null && !user.hasPermission(Permission.MANAGE_REQUESTS)) {
+      const cert = extractCertNumber(
+        requestBody.mediaType as 'movie' | 'tv',
+        tmdbMedia
+      );
+      if (isOverCap(cert, maxRating)) {
+        logger.warn('Request for media blocked due to age rating', {
+          tmdbId: tmdbMedia.id,
+          mediaType: requestBody.mediaType,
+          requestedFor: requestUser.id,
+          label: 'Media Request',
+        });
+        throw new ParentalRestrictionError(
+          'This title exceeds the maximum age rating allowed for this user.'
+        );
+      }
+    }
 
     let media = await mediaRepository.findOne({
       where: {

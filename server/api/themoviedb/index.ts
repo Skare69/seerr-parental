@@ -2,6 +2,11 @@ import ExternalAPI from '@server/api/externalapi';
 import type { TvShowProvider } from '@server/api/provider';
 import type { CacheStore } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
+import {
+  capToCertification,
+  isOverCap,
+  titleCertNumber,
+} from '@server/lib/parentalRatings';
 import { getSettings } from '@server/lib/settings';
 import { sortBy } from 'lodash';
 import type {
@@ -178,6 +183,12 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
   private locale: string;
   private discoverRegion?: string;
   private originalLanguage?: string;
+
+  /**
+   * When set, discover endpoints override any caller-supplied certification
+   * params with this server-side age-rating cap.
+   */
+  public parentalFilter?: { country: string; maxCert: number };
   constructor({
     discoverRegion,
     originalLanguage,
@@ -714,6 +725,10 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         .toISOString()
         .split('T')[0];
 
+      const parentalLte = this.parentalFilter
+        ? await capToCertification(this, 'movie', this.parentalFilter.maxCert)
+        : undefined;
+
       const data = await this.get<TmdbSearchMovieResponse>('/discover/movie', {
         params: {
           sort_by: sortBy,
@@ -750,10 +765,17 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           'vote_count.lte': voteCountLte,
           watch_region: watchRegion,
           with_watch_providers: watchProviders,
-          certification: certification,
-          'certification.gte': certificationGte,
-          'certification.lte': certificationLte,
-          certification_country: certificationCountry,
+          ...(this.parentalFilter
+            ? {
+                certification_country: this.parentalFilter.country,
+                'certification.lte': parentalLte,
+              }
+            : {
+                certification: certification,
+                'certification.gte': certificationGte,
+                'certification.lte': certificationLte,
+                certification_country: certificationCountry,
+              }),
         },
       });
 
@@ -802,6 +824,10 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
         .toISOString()
         .split('T')[0];
 
+      const parentalLte = this.parentalFilter
+        ? await capToCertification(this, 'tv', this.parentalFilter.maxCert)
+        : undefined;
+
       const data = await this.get<TmdbSearchTvResponse>('/discover/tv', {
         params: {
           sort_by: sortBy,
@@ -838,12 +864,33 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           with_watch_providers: watchProviders,
           watch_region: watchRegion,
           with_status: withStatus,
-          certification: certification,
-          'certification.gte': certificationGte,
-          'certification.lte': certificationLte,
-          certification_country: certificationCountry,
+          ...(this.parentalFilter
+            ? {
+                certification_country: this.parentalFilter.country,
+                'certification.lte': parentalLte,
+              }
+            : {
+                certification: certification,
+                'certification.gte': certificationGte,
+                'certification.lte': certificationLte,
+                certification_country: certificationCountry,
+              }),
         },
       });
+
+      if (this.parentalFilter) {
+        const { maxCert } = this.parentalFilter;
+        // TMDB ignores certification filters on discover/tv, so post-filter.
+        const kept = await Promise.all(
+          data.results.map(async (result) => {
+            const cert = await titleCertNumber(this, 'tv', result.id);
+            return isOverCap(cert, maxCert) ? null : result;
+          })
+        );
+        data.results = kept.filter(
+          (r): r is (typeof data.results)[number] => r !== null
+        );
+      }
 
       return data;
     } catch (e) {

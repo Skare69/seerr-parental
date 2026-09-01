@@ -184,6 +184,17 @@ components:
           nullable: true
           description: 'Time period in days for TV quota'
           example: 14
+        maxParentalRating:
+          type: number
+          nullable: true
+          description: 'Maximum allowed content rating (0, 6, 12, 16, 18); null = unrestricted. Only settable by MANAGE_USERS.'
+          enum: [0, 6, 12, 16, 18]
+        dateOfBirth:
+          type: string
+          nullable: true
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: 'Date of birth (YYYY-MM-DD); age rating is derived from it once per day. Only settable by MANAGE_USERS.'
+          example: '2019-04-01'
         globalMovieQuotaDays:
           type: number
           nullable: true

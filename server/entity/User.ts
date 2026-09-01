@@ -136,6 +136,18 @@ export class User {
   @Column({ nullable: true })
   public tvQuotaDays?: number;
 
+  /**
+   * Admin-set maximum content rating (0, 6, 12, 16, 18). null/undefined =
+   * unrestricted. Combined with the derived rating from dateOfBirth via the
+   * stricter value (see server/lib/parentalRatings.ts).
+   */
+  @Column({ type: 'integer', nullable: true })
+  public maxParentalRating?: number | null;
+
+  /** ISO date string (YYYY-MM-DD). Set = age rating derived from age. */
+  @Column({ type: 'varchar', nullable: true })
+  public dateOfBirth?: string | null;
+
   @OneToOne(() => UserSettings, (settings) => settings.user, {
     cascade: true,
     eager: true,

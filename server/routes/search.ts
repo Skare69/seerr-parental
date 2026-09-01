@@ -1,6 +1,7 @@
 import TheMovieDb from '@server/api/themoviedb';
 import type { TmdbSearchMultiResponse } from '@server/api/themoviedb/interfaces';
 import Media from '@server/entity/Media';
+import { filterRestrictedResults } from '@server/lib/parentalRatings';
 import { findSearchProvider } from '@server/lib/search';
 import logger from '@server/logger';
 import { mapSearchResults } from '@server/models/Search';
@@ -11,6 +12,7 @@ const searchRoutes = Router();
 searchRoutes.get('/', async (req, res, next) => {
   const queryString = req.query.query as string;
   const searchProvider = findSearchProvider(queryString.toLowerCase());
+  const tmdb = new TheMovieDb();
   let results: TmdbSearchMultiResponse;
 
   try {
@@ -24,8 +26,6 @@ searchRoutes.get('/', async (req, res, next) => {
         query: queryString,
       });
     } else {
-      const tmdb = new TheMovieDb();
-
       results = await tmdb.searchMulti({
         query: queryString,
         page: Number(req.query.page),
@@ -45,7 +45,11 @@ searchRoutes.get('/', async (req, res, next) => {
       page: results.page,
       totalPages: results.total_pages,
       totalResults: results.total_results,
-      results: mapSearchResults(results.results, media),
+      results: await filterRestrictedResults(
+        req.user,
+        tmdb,
+        mapSearchResults(results.results, media)
+      ),
     });
   } catch (e) {
     logger.debug('Something went wrong retrieving search results', {

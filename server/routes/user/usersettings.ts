@@ -57,6 +57,8 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         movieQuotaDays: user.movieQuotaDays,
         tvQuotaLimit: user.tvQuotaLimit,
         tvQuotaDays: user.tvQuotaDays,
+        maxParentalRating: user.maxParentalRating ?? null,
+        dateOfBirth: user.dateOfBirth ?? null,
         globalMovieQuotaDays: defaultQuotas.movie.quotaDays,
         globalMovieQuotaLimit: defaultQuotas.movie.quotaLimit,
         globalTvQuotaDays: defaultQuotas.tv.quotaDays,
@@ -117,6 +119,10 @@ userSettingsRoutes.post<
       user.movieQuotaLimit = req.body.movieQuotaLimit;
       user.tvQuotaDays = req.body.tvQuotaDays;
       user.tvQuotaLimit = req.body.tvQuotaLimit;
+
+      // Parental limits: admin-only, same gate as quota overrides
+      user.maxParentalRating = req.body.maxParentalRating ?? null;
+      user.dateOfBirth = req.body.dateOfBirth || null;
     }
 
     if (!user.settings) {

@@ -21,6 +21,7 @@ import type {
   MediaRequestBody,
   RequestResultsResponse,
 } from '@server/interfaces/api/requestInterfaces';
+import { ParentalRestrictionError } from '@server/lib/parentalRatings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -331,6 +332,7 @@ requestRoutes.post<never, MediaRequest, MediaRequestBody>(
       switch (error.constructor) {
         case RequestPermissionError:
         case QuotaRestrictedError:
+        case ParentalRestrictionError:
           return next({ status: 403, message: error.message });
         case DuplicateMediaRequestError:
           return next({ status: 409, message: error.message });

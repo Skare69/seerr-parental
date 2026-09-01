@@ -7,6 +7,12 @@ import { MediaType } from '@server/constants/media';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { Watchlist } from '@server/entity/Watchlist';
+import {
+  extractCertNumber,
+  filterRestrictedResults,
+  getEffectiveMaxRating,
+  isOverCap,
+} from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import { mapTvResult } from '@server/models/Search';
 import { mapSeasonWithEpisodes, mapTvDetails } from '@server/models/Tv';
@@ -21,6 +27,17 @@ tvRoutes.get('/:id', async (req, res, next) => {
     const tmdbTv = await tmdb.getTvShow({
       tvId: Number(req.params.id),
     });
+
+    const maxRating = getEffectiveMaxRating(req.user);
+    if (
+      maxRating !== null &&
+      isOverCap(extractCertNumber('tv', tmdbTv), maxRating)
+    ) {
+      return next({
+        status: 403,
+        message: 'This title exceeds the allowed maximum age rating.',
+      });
+    }
     const metadataProvider = tmdbTv.keywords.results.some(
       (keyword: TmdbKeyword) => keyword.id === ANIME_KEYWORD_ID
     )
@@ -78,6 +95,17 @@ tvRoutes.get('/:id/season/:seasonNumber', async (req, res, next) => {
       ? await getMetadataProvider('anime')
       : await getMetadataProvider('tv');
 
+    const maxRating = getEffectiveMaxRating(req.user);
+    if (
+      maxRating !== null &&
+      isOverCap(extractCertNumber('tv', tmdbTv), maxRating)
+    ) {
+      return next({
+        status: 403,
+        message: 'This title exceeds the allowed maximum age rating.',
+      });
+    }
+
     const season = await metadataProvider.getTvSeason({
       tvId: Number(req.params.id),
       seasonNumber: Number(req.params.seasonNumber),
@@ -122,11 +150,16 @@ tvRoutes.get('/:id/recommendations', async (req, res, next) => {
       page: results.page,
       totalPages: results.total_pages,
       totalResults: results.total_results,
-      results: results.results.map((result) =>
-        mapTvResult(
-          result,
-          media.find(
-            (req) => req.tmdbId === result.id && req.mediaType === MediaType.TV
+      results: await filterRestrictedResults(
+        req.user,
+        tmdb,
+        results.results.map((result) =>
+          mapTvResult(
+            result,
+            media.find(
+              (req) =>
+                req.tmdbId === result.id && req.mediaType === MediaType.TV
+            )
           )
         )
       ),
@@ -167,11 +200,16 @@ tvRoutes.get('/:id/similar', async (req, res, next) => {
       page: results.page,
       totalPages: results.total_pages,
       totalResults: results.total_results,
-      results: results.results.map((result) =>
-        mapTvResult(
-          result,
-          media.find(
-            (req) => req.tmdbId === result.id && req.mediaType === MediaType.TV
+      results: await filterRestrictedResults(
+        req.user,
+        tmdb,
+        results.results.map((result) =>
+          mapTvResult(
+            result,
+            media.find(
+              (req) =>
+                req.tmdbId === result.id && req.mediaType === MediaType.TV
+            )
           )
         )
       ),

@@ -13,6 +13,11 @@ import type {
   GenreSliderItem,
   WatchlistResponse,
 } from '@server/interfaces/api/discoverInterfaces';
+import {
+  PARENTAL_COUNTRY,
+  filterRestrictedResults,
+  getEffectiveMaxRating,
+} from '@server/lib/parentalRatings';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
 import { mapProductionCompany } from '@server/models/Movie';
@@ -45,10 +50,17 @@ export const createTmdbWithRegionLanguage = (user?: User): TheMovieDb => {
         ? user?.settings?.originalLanguage
         : settings.main.originalLanguage;
 
-  return new TheMovieDb({
+  const tmdb = new TheMovieDb({
     discoverRegion,
     originalLanguage,
   });
+
+  const maxRating = user ? getEffectiveMaxRating(user) : null;
+  if (maxRating !== null) {
+    tmdb.parentalFilter = { country: PARENTAL_COUNTRY, maxCert: maxRating };
+  }
+
+  return tmdb;
 };
 
 export const createTmdbWithBlocklistSettings = (): TheMovieDb => {
@@ -775,20 +787,22 @@ discoverRoutes.get('/trending', async (req, res, next) => {
       { includeActiveRequest: true }
     );
 
+    const mappedResults = data.results.map((result) => {
+      // - If "type" is set (case: "movie" or "tv"), the mediaType must also match.
+      // - If "type" is not set (case: "all"), only filter by tmdbId.
+      const selectedMedia = media.find(
+        (med) =>
+          med.tmdbId === result.id && (type ? med.mediaType === type : true)
+      );
+
+      return mapper(result, selectedMedia);
+    });
+
     return res.status(200).json({
       page: data.page,
       totalPages: data.total_pages,
       totalResults: data.total_results,
-      results: data.results.map((result) => {
-        // - If "type" is set (case: "movie" or "tv"), the mediaType must also match.
-        // - If "type" is not set (case: "all"), only filter by tmdbId.
-        const selectedMedia = media.find(
-          (med) =>
-            med.tmdbId === result.id && (type ? med.mediaType === type : true)
-        );
-
-        return mapper(result, selectedMedia);
-      }),
+      results: await filterRestrictedResults(req.user, tmdb, mappedResults),
     });
   } catch (e) {
     logger.debug('Something went wrong retrieving trending items', {

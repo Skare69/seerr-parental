@@ -11,6 +11,8 @@ export interface UserSettingsGeneralResponse {
   movieQuotaDays?: number;
   tvQuotaLimit?: number;
   tvQuotaDays?: number;
+  maxParentalRating?: number | null;
+  dateOfBirth?: string | null;
   globalMovieQuotaDays?: number;
   globalMovieQuotaLimit?: number;
   globalTvQuotaLimit?: number;
