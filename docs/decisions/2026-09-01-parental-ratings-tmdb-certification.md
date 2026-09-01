@@ -38,4 +38,27 @@ TV discover (`/discover/tv`) **ignores them completely**:
   `certification.lte` string is resolved from the cached
   `/certification/{movie,tv}/list` payload (DE strings are plain `"0".."18"`,
   order-sorted), so a future label change cannot silently break filtering.
-- Explicit per-user cap and DOB-derived cap combine via `min` (stricter wins).
+
+## Revision 2026-09-01 (later the same day)
+
+- The explicit cap and the DOB-derived cap no longer combine via `min`. They
+  are **mutually exclusive**: a stored date of birth is authoritative and
+  clears any fixed rating on write, because two competing limits on one
+  account cannot be reasoned about in the UI ("which one is in force?").
+  Enforced in `POST /user/{id}/settings/parental`, mirrored in the form.
+- The parental fields moved off `/settings/main` onto their own
+  `/settings/parental` endpoint plus a **Parental Controls** tab, matching the
+  per-tab endpoint convention already used by permissions and notifications.
+  A partial POST to `/settings/main` would otherwise blank unrelated settings.
+- Bug found by the first deployment: `maxParentalRating` was declared
+  `nullable: true` with `enum: [0, 6, 12, 16, 18]`. In OAS 3.0/ajv semantics
+  `nullable` widens the type but does **not** exempt the value from `enum`, so
+  submitting "Unrestricted" (null) failed spec validation and the whole user
+  settings form refused to save — with a misleading "profile picture gone"
+  symptom, since nothing on the form persisted. `null` is now in the enum, and
+  `server/routes/user/parentalSpec.test.ts` mounts the real validator against a
+  stub handler so this class of bug cannot recur silently (the existing route
+  tests do not mount the validator, which is exactly why it shipped).
+- `getEffectiveMaxRating`'s daily memo key now includes both inputs. It
+  previously keyed on user id + date only, so an admin's change to a cap was
+  ignored until UTC midnight.

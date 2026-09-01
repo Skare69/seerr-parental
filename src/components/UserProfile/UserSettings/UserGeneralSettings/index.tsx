@@ -59,11 +59,6 @@ const messages = defineMessages(
     movierequestlimit: 'Movie Request Limit',
     seriesrequestlimit: 'Series Request Limit',
     enableOverride: 'Override Global Limit',
-    maxagerating: 'Maximum Age Rating',
-    maxageratingTip:
-      'Hides titles above this age rating in discovery, search and requests',
-    dateofbirth: 'Date of Birth',
-    unrestricted: 'Unrestricted',
     applanguage: 'Display Language',
     languageDefault: 'Default ({language})',
     validationemailrequired: 'Email required',
@@ -164,8 +159,6 @@ const UserGeneralSettings = () => {
           movieQuotaDays: data?.movieQuotaDays,
           tvQuotaLimit: data?.tvQuotaLimit,
           tvQuotaDays: data?.tvQuotaDays,
-          maxParentalRating: data?.maxParentalRating ?? '',
-          dateOfBirth: data?.dateOfBirth ?? '',
           watchlistSyncMovies: data?.watchlistSyncMovies,
           watchlistSyncTv: data?.watchlistSyncTv,
         }}
@@ -187,11 +180,6 @@ const UserGeneralSettings = () => {
               movieQuotaDays: movieQuotaEnabled ? values.movieQuotaDays : null,
               tvQuotaLimit: tvQuotaEnabled ? values.tvQuotaLimit : null,
               tvQuotaDays: tvQuotaEnabled ? values.tvQuotaDays : null,
-              maxParentalRating:
-                values.maxParentalRating === ''
-                  ? null
-                  : Number(values.maxParentalRating),
-              dateOfBirth: values.dateOfBirth || null,
               watchlistSyncMovies: values.watchlistSyncMovies,
               watchlistSyncTv: values.watchlistSyncTv,
             });
@@ -515,57 +503,6 @@ const UserGeneralSettings = () => {
                     </div>
                   </>
                 )}
-              {currentHasPermission(Permission.MANAGE_USERS) && (
-                <>
-                  <div className="form-row">
-                    <label htmlFor="maxParentalRating" className="text-label">
-                      <span>{intl.formatMessage(messages.maxagerating)}</span>
-                      <span className="label-tip">
-                        {intl.formatMessage(messages.maxageratingTip)}
-                      </span>
-                    </label>
-                    <div className="form-input-area">
-                      <div className="form-input-field">
-                        <select
-                          id="maxParentalRating"
-                          name="maxParentalRating"
-                          value={values.maxParentalRating}
-                          onChange={(e) =>
-                            setFieldValue('maxParentalRating', e.target.value)
-                          }
-                        >
-                          <option value="">
-                            {intl.formatMessage(messages.unrestricted)}
-                          </option>
-                          {[0, 6, 12, 16, 18].map((rating) => (
-                            <option value={rating} key={`rating-${rating}`}>
-                              {`FSK ${rating}`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="dateOfBirth" className="text-label">
-                      <span>{intl.formatMessage(messages.dateofbirth)}</span>
-                    </label>
-                    <div className="form-input-area">
-                      <div className="form-input-field">
-                        <input
-                          type="date"
-                          id="dateOfBirth"
-                          name="dateOfBirth"
-                          value={values.dateOfBirth}
-                          onChange={(e) =>
-                            setFieldValue('dateOfBirth', e.target.value)
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
               {hasPermission(
                 [Permission.AUTO_REQUEST, Permission.AUTO_REQUEST_MOVIE],
                 { type: 'or' }

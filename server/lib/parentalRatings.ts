@@ -4,53 +4,42 @@ import type {
   TmdbTvDetails,
 } from '@server/api/themoviedb/interfaces';
 import type { User } from '@server/entity/User';
+import { fskFromDob } from '@server/lib/fskAge';
 import logger from '@server/logger';
 
 export const PARENTAL_COUNTRY = 'DE';
 
 export class ParentalRestrictionError extends Error {}
 
-export function fskFromAge(age: number): number {
-  if (age >= 18) return 18;
-  if (age >= 16) return 16;
-  if (age >= 12) return 12;
-  if (age >= 6) return 6;
-  return 0;
-}
-
-function ageFromDob(dob: string): number {
-  const date = new Date(dob.slice(0, 10));
-  if (Number.isNaN(date.getTime())) return 0;
-  const now = new Date();
-  let age = now.getFullYear() - date.getFullYear();
-  const monthDiff = now.getMonth() - date.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < date.getDate())) {
-    age--;
-  }
-  return Math.max(0, age);
-}
+export { fskFromAge } from '@server/lib/fskAge';
 
 // ponytail: memo never evicted — fine for a family instance; clear() if user count grows
 const dailyMemo = new Map<string, number | null>();
 
 /**
- * Effective per-user maximum FSK rating: derived from the date of birth (at
- * most once per UTC day, memoized) combined with the explicit admin override
- * via the stricter (lower) value. null = unrestricted.
+ * Effective per-user maximum FSK rating. A stored date of birth is
+ * authoritative — it derives the cap and ages up on its own — and the explicit
+ * admin rating applies only when no date of birth is set (the two are mutually
+ * exclusive on write). null = unrestricted.
  */
 export function getEffectiveMaxRating(user?: User): number | null {
   if (!user) return null;
 
-  const key = `${user.id}:${new Date().toISOString().slice(0, 10)}`;
+  // The key carries both inputs, so an admin's change takes effect on the next
+  // request instead of after UTC midnight, while the date still bounds the
+  // age derivation to one computation per day.
+  const key = [
+    user.id,
+    new Date().toISOString().slice(0, 10),
+    user.dateOfBirth ?? '',
+    user.maxParentalRating ?? '',
+  ].join(':');
   const memo = dailyMemo.get(key);
   if (memo !== undefined) return memo;
 
-  const derived = user.dateOfBirth
-    ? fskFromAge(ageFromDob(user.dateOfBirth))
-    : null;
-  const explicit = user.maxParentalRating ?? null;
-  const caps = [derived, explicit].filter((v): v is number => v !== null);
-  const cap = caps.length ? Math.min(...caps) : null;
+  const cap = user.dateOfBirth
+    ? fskFromDob(user.dateOfBirth)
+    : (user.maxParentalRating ?? null);
 
   dailyMemo.set(key, cap);
   return cap;

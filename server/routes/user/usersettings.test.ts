@@ -133,44 +133,65 @@ describe('POST /user/:id/settings/linked-accounts/jellyfin/quickconnect', () => 
   });
 });
 
-describe('POST /user/:id/settings/main parental limits', () => {
-  const settingsBody = (overrides: Record<string, unknown>) => ({
-    username: '',
-    email: '',
-    locale: '',
-    discoverRegion: '',
-    streamingRegion: '',
-    originalLanguage: '',
-    movieQuotaLimit: null,
-    movieQuotaDays: null,
-    tvQuotaLimit: null,
-    tvQuotaDays: null,
-    watchlistSyncMovies: false,
-    watchlistSyncTv: false,
-    ...overrides,
-  });
-
-  it('lets an admin set parental limits on their own account', async () => {
+describe('POST /user/:id/settings/parental', () => {
+  it('lets an admin set a fixed rating on their own account', async () => {
     const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
 
-    const res = await agent.post(`/user/${userId}/settings/main`).send(
-      settingsBody({
-        username: 'admin',
-        email: 'admin@seerr.dev',
-        maxParentalRating: 12,
-        dateOfBirth: '2019-04-01',
-      })
-    );
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ maxParentalRating: 12, dateOfBirth: null });
 
     assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.maxParentalRating, 12);
+    assert.strictEqual(res.body.effectiveMaxRating, 12);
+
     const user = await getRepository(User).findOneOrFail({
       where: { id: userId },
     });
     assert.strictEqual(user.maxParentalRating, 12);
-    assert.strictEqual(user.dateOfBirth, '2019-04-01');
+    assert.strictEqual(user.dateOfBirth, null);
   });
 
-  it('ignores parental limits sent by a non-admin editing themselves', async () => {
+  it('lets a date of birth replace a fixed rating', async () => {
+    const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
+    const repo = getRepository(User);
+
+    await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ maxParentalRating: 18, dateOfBirth: null });
+
+    // Both fields arriving together: the date wins and clears the fixed
+    // value, so a user is never governed by two competing limits.
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ maxParentalRating: 18, dateOfBirth: '2019-04-01' });
+
+    assert.strictEqual(res.status, 200);
+    const user = await repo.findOneOrFail({ where: { id: userId } });
+    assert.strictEqual(user.dateOfBirth, '2019-04-01');
+    assert.strictEqual(user.maxParentalRating, null);
+  });
+
+  it('clears both limits when neither is supplied', async () => {
+    const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
+    const repo = getRepository(User);
+
+    await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ dateOfBirth: '2019-04-01' });
+
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ maxParentalRating: null, dateOfBirth: null });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.effectiveMaxRating, null);
+    const user = await repo.findOneOrFail({ where: { id: userId } });
+    assert.strictEqual(user.maxParentalRating, null);
+    assert.strictEqual(user.dateOfBirth, null);
+  });
+
+  it('refuses parental changes from a non-admin, including on themselves', async () => {
     const repo = getRepository(User);
     const capped = await repo.findOneOrFail({
       where: { email: 'friend@seerr.dev' },
@@ -180,17 +201,25 @@ describe('POST /user/:id/settings/main parental limits', () => {
 
     const { agent, userId } = await loginAs('friend@seerr.dev', 'test1234');
 
-    const res = await agent.post(`/user/${userId}/settings/main`).send(
-      settingsBody({
-        username: 'friend',
-        email: 'friend@seerr.dev',
-        maxParentalRating: null,
-        dateOfBirth: null,
-      })
-    );
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ maxParentalRating: null, dateOfBirth: null });
 
-    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.status, 403);
     const user = await repo.findOneOrFail({ where: { id: userId } });
     assert.strictEqual(user.maxParentalRating, 6);
+  });
+
+  it('reports the cap derived from a date of birth', async () => {
+    const { agent, userId } = await loginAs('admin@seerr.dev', 'test1234');
+    const dob = new Date();
+    dob.setFullYear(dob.getFullYear() - 7);
+
+    const res = await agent
+      .post(`/user/${userId}/settings/parental`)
+      .send({ dateOfBirth: dob.toISOString().slice(0, 10) });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.effectiveMaxRating, 6);
   });
 });

@@ -184,17 +184,6 @@ components:
           nullable: true
           description: 'Time period in days for TV quota'
           example: 14
-        maxParentalRating:
-          type: number
-          nullable: true
-          description: 'Maximum allowed content rating (0, 6, 12, 16, 18); null = unrestricted. Only settable by MANAGE_USERS.'
-          enum: [0, 6, 12, 16, 18]
-        dateOfBirth:
-          type: string
-          nullable: true
-          pattern: '^\d{4}-\d{2}-\d{2}$'
-          description: 'Date of birth (YYYY-MM-DD); age rating is derived from it once per day. Only settable by MANAGE_USERS.'
-          example: '2019-04-01'
         globalMovieQuotaDays:
           type: number
           nullable: true
@@ -225,6 +214,29 @@ components:
           nullable: true
           description: 'Enable watchlist sync for TV'
           example: false
+    UserSettingsParental:
+      type: object
+      properties:
+        maxParentalRating:
+          type: number
+          nullable: true
+          description: 'Fixed maximum allowed content rating (FSK 0, 6, 12, 16, 18); null = unrestricted. Cleared when dateOfBirth is set.'
+          # null must be listed explicitly: `nullable: true` widens the type but
+          # does NOT exempt the value from `enum` (OAS 3.0 / ajv semantics).
+          enum: [0, 6, 12, 16, 18, null]
+          example: 12
+        dateOfBirth:
+          type: string
+          nullable: true
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: 'Date of birth (YYYY-MM-DD). When set, the cap is derived from the age and rises at each birthday.'
+          example: '2019-04-01'
+        effectiveMaxRating:
+          type: number
+          nullable: true
+          readOnly: true
+          description: 'Read-only: what maxParentalRating and dateOfBirth currently resolve to; null = unrestricted.'
+          example: 6
     MainSettings:
       type: object
       properties:
@@ -5474,6 +5486,55 @@ paths:
                   permissions:
                     type: number
                     example: 2
+  /user/{userId}/settings/parental:
+    get:
+      summary: Get parental limits for a user
+      description: Returns the parental rating limit for a specific user. Requires the `MANAGE_USERS` permission.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: User parental limits returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettingsParental'
+    post:
+      summary: Update parental limits for a user
+      description: |
+        Updates and returns the parental rating limit for a specific user.
+        Requires the `MANAGE_USERS` permission.
+
+        `maxParentalRating` and `dateOfBirth` are mutually exclusive: when a
+        date of birth is supplied it derives the cap (and raises it at each
+        birthday), and any fixed rating sent alongside it is cleared.
+      tags:
+        - users
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSettingsParental'
+      responses:
+        '200':
+          description: Updated user parental limits returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettingsParental'
   /user/{userId}/watch_data:
     get:
       summary: Get watch data

@@ -51,12 +51,16 @@ describe('getEffectiveMaxRating', () => {
     );
   });
 
-  it('uses the explicit override and the stricter of both', () => {
+  it('uses the explicit rating when no date of birth is set', () => {
     assert.equal(
       getEffectiveMaxRating(fakeUser({ id: 904, maxParentalRating: 12 })),
       12
     );
-    // DOB says 18, explicit says 12 -> 12
+  });
+
+  it('lets the date of birth win over a stale explicit rating', () => {
+    // The two are mutually exclusive on write; if a legacy row carries both,
+    // the date of birth is authoritative because it ages up on its own.
     assert.equal(
       getEffectiveMaxRating(
         fakeUser({
@@ -65,13 +69,29 @@ describe('getEffectiveMaxRating', () => {
           maxParentalRating: 12,
         })
       ),
-      12
+      18
     );
-    // DOB says 6, explicit says 12 -> 6
     assert.equal(
       getEffectiveMaxRating(
-        fakeUser({ id: 906, dateOfBirth: dobForAge(7), maxParentalRating: 12 })
+        fakeUser({ id: 906, dateOfBirth: dobForAge(7), maxParentalRating: 18 })
       ),
+      6
+    );
+  });
+
+  it('reflects a changed cap immediately, not after UTC midnight', () => {
+    assert.equal(
+      getEffectiveMaxRating(fakeUser({ id: 908, maxParentalRating: 12 })),
+      12
+    );
+    // Same user, admin raises the cap: the daily memo must not mask it.
+    assert.equal(
+      getEffectiveMaxRating(fakeUser({ id: 908, maxParentalRating: 18 })),
+      18
+    );
+    // ...and switching that user to a date of birth takes effect at once.
+    assert.equal(
+      getEffectiveMaxRating(fakeUser({ id: 908, dateOfBirth: dobForAge(7) })),
       6
     );
   });

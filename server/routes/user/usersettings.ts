@@ -9,7 +9,9 @@ import { UserSettings } from '@server/entity/UserSettings';
 import type {
   UserSettingsGeneralResponse,
   UserSettingsNotificationsResponse,
+  UserSettingsParentalResponse,
 } from '@server/interfaces/api/userSettingsInterfaces';
+import { getEffectiveMaxRating } from '@server/lib/parentalRatings';
 import { Permission } from '@server/lib/permissions';
 import { getSettings } from '@server/lib/settings';
 import logger from '@server/logger';
@@ -57,8 +59,7 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         movieQuotaDays: user.movieQuotaDays,
         tvQuotaLimit: user.tvQuotaLimit,
         tvQuotaDays: user.tvQuotaDays,
-        maxParentalRating: user.maxParentalRating ?? null,
-        dateOfBirth: user.dateOfBirth ?? null,
+        // Parental limits live on their own endpoint: /settings/parental
         globalMovieQuotaDays: defaultQuotas.movie.quotaDays,
         globalMovieQuotaLimit: defaultQuotas.movie.quotaLimit,
         globalTvQuotaDays: defaultQuotas.tv.quotaDays,
@@ -119,13 +120,6 @@ userSettingsRoutes.post<
       user.movieQuotaLimit = req.body.movieQuotaLimit;
       user.tvQuotaDays = req.body.tvQuotaDays;
       user.tvQuotaLimit = req.body.tvQuotaLimit;
-    }
-
-    // Parental limits: any admin may set these, on any account including their
-    // own. A non-admin editing themselves can never lift their own cap.
-    if (req.user?.hasPermission(Permission.MANAGE_USERS)) {
-      user.maxParentalRating = req.body.maxParentalRating ?? null;
-      user.dateOfBirth = req.body.dateOfBirth || null;
     }
 
     if (!user.settings) {
@@ -781,6 +775,73 @@ userSettingsRoutes.post<
       await userRepository.save(user);
 
       return res.status(200).json({ permissions: user.permissions });
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
+
+userSettingsRoutes.get<{ id: string }, UserSettingsParentalResponse>(
+  '/parental',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    const userRepository = getRepository(User);
+
+    try {
+      const user = await userRepository.findOne({
+        where: { id: Number(req.params.id) },
+      });
+
+      if (!user) {
+        return next({ status: 404, message: 'User not found.' });
+      }
+
+      return res.status(200).json({
+        maxParentalRating: user.maxParentalRating ?? null,
+        dateOfBirth: user.dateOfBirth ?? null,
+        effectiveMaxRating: getEffectiveMaxRating(user),
+      });
+    } catch (e) {
+      next({ status: 500, message: e.message });
+    }
+  }
+);
+
+userSettingsRoutes.post<
+  { id: string },
+  UserSettingsParentalResponse,
+  { maxParentalRating?: number | null; dateOfBirth?: string | null }
+>(
+  '/parental',
+  isAuthenticated(Permission.MANAGE_USERS),
+  async (req, res, next) => {
+    const userRepository = getRepository(User);
+
+    try {
+      const user = await userRepository.findOne({
+        where: { id: Number(req.params.id) },
+      });
+
+      if (!user) {
+        return next({ status: 404, message: 'User not found.' });
+      }
+
+      // A date of birth and a fixed rating are mutually exclusive: the date
+      // derives the cap and ages up on its own, so it wins and clears the
+      // fixed value. The UI enforces the same rule; this is the backstop.
+      const dateOfBirth = req.body.dateOfBirth || null;
+      user.dateOfBirth = dateOfBirth;
+      user.maxParentalRating = dateOfBirth
+        ? null
+        : (req.body.maxParentalRating ?? null);
+
+      await userRepository.save(user);
+
+      return res.status(200).json({
+        maxParentalRating: user.maxParentalRating,
+        dateOfBirth: user.dateOfBirth,
+        effectiveMaxRating: getEffectiveMaxRating(user),
+      });
     } catch (e) {
       next({ status: 500, message: e.message });
     }
