@@ -316,9 +316,12 @@
 
   input[type='text'],
   input[type='password'],
+  input[type='date'],
   select,
   textarea {
     @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 text-white transition duration-150 ease-in-out sm:text-sm sm:leading-5;
+    /* native widgets (date picker, autofill) follow the dark theme */
+    color-scheme: dark;
   }
 
   input.rounded-l-only,
