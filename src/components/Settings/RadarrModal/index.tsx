@@ -34,8 +34,8 @@ const messages = defineMessages('components.Settings.RadarrModal', {
   validationProfileRequired: 'You must select a quality profile',
   validationMinimumAvailabilityRequired:
     'You must select a minimum availability',
-  toastRadarrTestSuccess: 'Radarr connection established successfully!',
-  toastRadarrTestFailure: 'Failed to connect to Radarr.',
+  toastRadarrTestSuccess: '{serverType} connection established successfully!',
+  toastRadarrTestFailure: 'Failed to connect to {serverType}.',
   add: 'Add Server',
   defaultserver: 'Default Server',
   default4kserver: 'Default 4K Server',
@@ -76,15 +76,16 @@ const messages = defineMessages('components.Settings.RadarrModal', {
   announced: 'Announced',
   inCinemas: 'In Cinemas',
   released: 'Released',
-  apiKeyHelp: 'Find it in Radarr: Settings > General > Security > API Key',
+  apiKeyHelp:
+    'Find it in {serverType}: Settings > General > Security > API Key',
   baseUrlHelp:
-    'If you set a URL Base in Radarr (Settings > General > Host), enter it here (e.g. /radarr). Leave blank otherwise.',
+    'If you set a URL Base in {serverType} (Settings > General > Host), enter it here (e.g. {urlBase}). Leave blank otherwise.',
   externalUrlHelp:
     'For clickable links on media pages when the hostname is not reachable from outside your network.',
   syncEnabledHelp:
-    'Scan Radarr for existing media and request status so users cannot request content already available.',
+    'Scan {serverType} for existing media and request status so users cannot request content already available.',
   enableSearchHelp:
-    'Automatically trigger a search in Radarr when a request is approved.',
+    'Automatically trigger a search in {serverType} when a request is approved.',
 });
 
 interface RadarrModalProps {
@@ -103,6 +104,8 @@ const RadarrModal = ({
 }: RadarrModalProps) => {
   const intl = useIntl();
   const whisparr = isWhisparr ?? radarr?.isWhisparr ?? false;
+  // Whisparr is a Radarr fork, so every help text naming the server is shared.
+  const serverType = whisparr ? 'Whisparr' : 'Radarr';
   const initialLoad = useRef(false);
   const { addToast } = useToasts();
   const [isValidated, setIsValidated] = useState(radarr ? true : false);
@@ -189,25 +192,31 @@ const RadarrModal = ({
         setIsValidated(true);
         setTestResponse(response.data);
         if (initialLoad.current) {
-          addToast(intl.formatMessage(messages.toastRadarrTestSuccess), {
-            appearance: 'success',
-            autoDismiss: true,
-          });
+          addToast(
+            intl.formatMessage(messages.toastRadarrTestSuccess, { serverType }),
+            {
+              appearance: 'success',
+              autoDismiss: true,
+            }
+          );
         }
       } catch {
         setIsValidated(false);
         if (initialLoad.current) {
-          addToast(intl.formatMessage(messages.toastRadarrTestFailure), {
-            appearance: 'error',
-            autoDismiss: true,
-          });
+          addToast(
+            intl.formatMessage(messages.toastRadarrTestFailure, { serverType }),
+            {
+              appearance: 'error',
+              autoDismiss: true,
+            }
+          );
         }
       } finally {
         setIsTesting(false);
         initialLoad.current = true;
       }
     },
-    [addToast, intl]
+    [addToast, intl, serverType]
   );
 
   useEffect(() => {
@@ -247,7 +256,7 @@ const RadarrModal = ({
           minimumAvailability: radarr?.minimumAvailability ?? 'released',
           tags: radarr?.tags ?? [],
           isDefault: radarr?.isDefault ?? false,
-          is4k: radarr?.is4k ?? false,
+          is4k: whisparr ? false : (radarr?.is4k ?? false),
           externalUrl: radarr?.externalUrl,
           syncEnabled: radarr?.syncEnabled ?? false,
           enableSearch: !radarr?.preventSearch,
@@ -375,17 +384,19 @@ const RadarrModal = ({
                     <Field type="checkbox" id="isDefault" name="isDefault" />
                   </div>
                 </div>
-                <div className="form-row">
-                  <label htmlFor="is4k" className="checkbox-label">
-                    {intl.formatMessage(messages.server4k)}
-                    <span className="label-tip">
-                      {intl.formatMessage(messages.server4kHelp)}
-                    </span>
-                  </label>
-                  <div className="form-input-area">
-                    <Field type="checkbox" id="is4k" name="is4k" />
+                {!whisparr && (
+                  <div className="form-row">
+                    <label htmlFor="is4k" className="checkbox-label">
+                      {intl.formatMessage(messages.server4k)}
+                      <span className="label-tip">
+                        {intl.formatMessage(messages.server4kHelp)}
+                      </span>
+                    </label>
+                    <div className="form-input-area">
+                      <Field type="checkbox" id="is4k" name="is4k" />
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="form-row">
                   <label htmlFor="name" className="text-label">
                     {intl.formatMessage(messages.servername)}
@@ -489,7 +500,7 @@ const RadarrModal = ({
                     {intl.formatMessage(messages.apiKey)}
                     <span className="label-required">*</span>
                     <span className="label-tip">
-                      {intl.formatMessage(messages.apiKeyHelp)}
+                      {intl.formatMessage(messages.apiKeyHelp, { serverType })}
                     </span>
                   </label>
                   <div className="form-input-area">
@@ -515,7 +526,10 @@ const RadarrModal = ({
                   <label htmlFor="baseUrl" className="text-label">
                     {intl.formatMessage(messages.baseUrl)}
                     <span className="label-tip">
-                      {intl.formatMessage(messages.baseUrlHelp)}
+                      {intl.formatMessage(messages.baseUrlHelp, {
+                        serverType,
+                        urlBase: `/${serverType.toLowerCase()}`,
+                      })}
                     </span>
                   </label>
                   <div className="form-input-area">
@@ -742,7 +756,9 @@ const RadarrModal = ({
                   <label htmlFor="syncEnabled" className="checkbox-label">
                     {intl.formatMessage(messages.syncEnabled)}
                     <span className="label-tip">
-                      {intl.formatMessage(messages.syncEnabledHelp)}
+                      {intl.formatMessage(messages.syncEnabledHelp, {
+                        serverType,
+                      })}
                     </span>
                   </label>
                   <div className="form-input-area">
@@ -757,7 +773,9 @@ const RadarrModal = ({
                   <label htmlFor="enableSearch" className="checkbox-label">
                     {intl.formatMessage(messages.enableSearch)}
                     <span className="label-tip">
-                      {intl.formatMessage(messages.enableSearchHelp)}
+                      {intl.formatMessage(messages.enableSearchHelp, {
+                        serverType,
+                      })}
                     </span>
                   </label>
                   <div className="form-input-area">
