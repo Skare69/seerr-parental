@@ -10,14 +10,15 @@ import { Label, Radio, RadioGroup } from '@headlessui/react';
 import { ArrowDownOnSquareIcon } from '@heroicons/react/24/outline';
 import type { TmdbGenre } from '@server/api/themoviedb/interfaces';
 import type { UserSettingsParentalResponse } from '@server/interfaces/api/userSettingsInterfaces';
-import { fskFromDob } from '@server/lib/fskAge';
+import { fskFromDob, isValidDob } from '@server/lib/fskAge';
 import axios from 'axios';
-import { Form, Formik } from 'formik';
+import { Field, Form, Formik } from 'formik';
 import { useRouter } from 'next/router';
 import type { MessageDescriptor } from 'react-intl';
 import { useIntl } from 'react-intl';
 import Select from 'react-select';
 import useSWR from 'swr';
+import * as Yup from 'yup';
 
 const messages = defineMessages(
   'components.UserProfile.UserSettings.UserParentalSettings',
@@ -37,13 +38,15 @@ const messages = defineMessages(
       'Titles above the resulting rating are hidden in discovery and search, and requests for them are refused',
     dateofbirth: 'Date of Birth',
     maxagerating: 'Maximum Age Rating',
-    currentlimit: 'Current limit',
+    currentlimit: 'Current Limit',
     currentlimitUnrestricted: 'Unrestricted — no titles are hidden',
     blockedgenres: 'Blocked Genres',
     blockedgenresTip:
       'Titles in these genres are hidden and cannot be requested, whatever their age rating. While any genre is blocked, titles with no genre listed are hidden too, since they cannot be checked',
     selectgenres: 'Select genres…',
     currentlimitValue: 'FSK {rating} — higher-rated titles are hidden',
+    validationDobRequired: 'Valid date of birth required',
+    validationRatingRequired: 'Rating required',
     toastSettingsSuccess: 'Parental controls saved successfully!',
     toastSettingsFailure: 'Something went wrong while saving settings.',
   }
@@ -73,7 +76,9 @@ const LIMIT_SOURCES: {
   },
 ];
 
-const FSK_TIERS = [0, 6, 12, 16, 18];
+// FSK 18 is gone: adults are unrestricted, so the fixed tiers stop at 16.
+// A stored legacy 18 falls back to the 'none' source below.
+const FSK_TIERS = [0, 6, 12, 16];
 
 /** Sensible starting point when switching to a hand-picked rating. */
 const DEFAULT_FIXED_RATING = '12';
@@ -106,9 +111,30 @@ const UserParentalSettings = () => {
     return <ErrorPage statusCode={500} />;
   }
 
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    '0'
+  )}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const UserParentalSettingsSchema = Yup.object().shape({
+    dateOfBirth: Yup.string().test(
+      'dateOfBirth',
+      intl.formatMessage(messages.validationDobRequired),
+      (value, context) =>
+        context.parent.limitSource !== 'dob' || (!!value && isValidDob(value))
+    ),
+    maxParentalRating: Yup.string().test(
+      'maxParentalRating',
+      intl.formatMessage(messages.validationRatingRequired),
+      (value, context) => context.parent.limitSource !== 'fixed' || !!value
+    ),
+  });
+
+  // A stored legacy cap of 18 starts as unrestricted; 18 is no longer a tier.
   const initialSource: LimitSource = data.dateOfBirth
     ? 'dob'
-    : data.maxParentalRating != null
+    : data.maxParentalRating != null && data.maxParentalRating < 18
       ? 'fixed'
       : 'none';
 
@@ -139,12 +165,13 @@ const UserParentalSettings = () => {
           limitSource: initialSource,
           dateOfBirth: data.dateOfBirth ?? '',
           maxParentalRating:
-            data.maxParentalRating != null
+            data.maxParentalRating != null && data.maxParentalRating < 18
               ? String(data.maxParentalRating)
               : '',
           blockedGenres: data.blockedGenres ?? [],
         }}
         enableReinitialize
+        validationSchema={UserParentalSettingsSchema}
         onSubmit={async (values) => {
           // Exactly one age limit is ever sent: the two are alternatives,
           // never a combination. The genre blocklist is independent of both.
@@ -186,7 +213,14 @@ const UserParentalSettings = () => {
           }
         }}
       >
-        {({ isSubmitting, setFieldValue, values }) => {
+        {({
+          errors,
+          touched,
+          isSubmitting,
+          isValid,
+          values,
+          setFieldValue,
+        }) => {
           const effective =
             values.limitSource === 'dob'
               ? fskFromDob(values.dateOfBirth)
@@ -285,16 +319,17 @@ const UserParentalSettings = () => {
                   </label>
                   <div className="form-input-area">
                     <div className="form-input-field">
-                      <input
+                      <Field
                         type="date"
                         id="dateOfBirth"
                         name="dateOfBirth"
-                        value={values.dateOfBirth}
-                        onChange={(e) =>
-                          setFieldValue('dateOfBirth', e.target.value)
-                        }
+                        min="1900-01-01"
+                        max={todayStr}
                       />
                     </div>
+                    {errors.dateOfBirth && touched.dateOfBirth && (
+                      <div className="error">{errors.dateOfBirth}</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -306,21 +341,21 @@ const UserParentalSettings = () => {
                   </label>
                   <div className="form-input-area">
                     <div className="form-input-field">
-                      <select
+                      <Field
+                        as="select"
                         id="maxParentalRating"
                         name="maxParentalRating"
-                        value={values.maxParentalRating}
-                        onChange={(e) =>
-                          setFieldValue('maxParentalRating', e.target.value)
-                        }
                       >
                         {FSK_TIERS.map((rating) => (
                           <option value={rating} key={`rating-${rating}`}>
                             {`FSK ${rating}`}
                           </option>
                         ))}
-                      </select>
+                      </Field>
                     </div>
+                    {errors.maxParentalRating && touched.maxParentalRating && (
+                      <div className="error">{errors.maxParentalRating}</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -374,7 +409,7 @@ const UserParentalSettings = () => {
                     <Button
                       buttonType="primary"
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !isValid}
                     >
                       <ArrowDownOnSquareIcon />
                       <span>

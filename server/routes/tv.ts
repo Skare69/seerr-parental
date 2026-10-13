@@ -226,6 +226,13 @@ tvRoutes.get('/:id/ratings', async (req, res, next) => {
       tvId: Number(req.params.id),
     });
 
+    if (isTitleBlocked(req.user, 'tv', tv)) {
+      return next({
+        status: 403,
+        message: 'This title is not available for this user.',
+      });
+    }
+
     const rtratings = await rtapi.getTVRatings(
       tv.name,
       tv.first_air_date ? Number(tv.first_air_date.slice(0, 4)) : undefined

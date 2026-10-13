@@ -34,6 +34,28 @@ import { Router } from 'express';
 import { sortBy } from 'lodash';
 import { z } from 'zod';
 
+/**
+ * Applies only the parental limits (age cap and blocked genres) to an
+ * existing TMDB client. Routes that upstream runs with a plain
+ * `new TheMovieDb()` keep their region/language behavior and add just the
+ * limits.
+ */
+export const withParentalFilter = (
+  tmdb: TheMovieDb,
+  user?: User
+): TheMovieDb => {
+  const maxRating = getEffectiveMaxRating(user);
+  const blockedGenres = getBlockedGenres(user);
+  if (maxRating !== null || blockedGenres.length) {
+    tmdb.parentalFilter = {
+      country: PARENTAL_COUNTRY,
+      maxCert: maxRating,
+      blockedGenres,
+    };
+  }
+  return tmdb;
+};
+
 export const createTmdbWithRegionLanguage = (user?: User): TheMovieDb => {
   const settings = getSettings();
 
@@ -56,17 +78,7 @@ export const createTmdbWithRegionLanguage = (user?: User): TheMovieDb => {
     originalLanguage,
   });
 
-  const maxRating = user ? getEffectiveMaxRating(user) : null;
-  const blockedGenres = getBlockedGenres(user);
-  if (maxRating !== null || blockedGenres.length) {
-    tmdb.parentalFilter = {
-      country: PARENTAL_COUNTRY,
-      maxCert: maxRating,
-      blockedGenres,
-    };
-  }
-
-  return tmdb;
+  return withParentalFilter(tmdb, user);
 };
 
 export const createTmdbWithBlocklistSettings = (): TheMovieDb => {
@@ -333,7 +345,7 @@ discoverRoutes.get<{ genreId: string }>(
 discoverRoutes.get<{ studioId: string }>(
   '/movies/studio/:studioId',
   async (req, res, next) => {
-    const tmdb = new TheMovieDb();
+    const tmdb = withParentalFilter(new TheMovieDb(), req.user);
 
     try {
       const studio = await tmdb.getStudio(Number(req.params.studioId));
@@ -645,7 +657,7 @@ discoverRoutes.get<{ genreId: string }>(
 discoverRoutes.get<{ networkId: string }>(
   '/tv/network/:networkId',
   async (req, res, next) => {
-    const tmdb = new TheMovieDb();
+    const tmdb = withParentalFilter(new TheMovieDb(), req.user);
 
     try {
       const network = await tmdb.getNetwork(Number(req.params.networkId));
@@ -843,23 +855,21 @@ discoverRoutes.get<{ keywordId: string }>(
         { includeActiveRequest: true }
       );
 
+      const mappedResults = data.results.map((result) =>
+        mapMovieResult(
+          result,
+          media.find(
+            (med) =>
+              med.tmdbId === result.id && med.mediaType === MediaType.MOVIE
+          )
+        )
+      );
+
       return res.status(200).json({
         page: data.page,
         totalPages: data.total_pages,
         totalResults: data.total_results,
-        results: await filterRestrictedResults(
-          req.user,
-          tmdb,
-          data.results.map((result) =>
-            mapMovieResult(
-              result,
-              media.find(
-                (med) =>
-                  med.tmdbId === result.id && med.mediaType === MediaType.MOVIE
-              )
-            )
-          )
-        ),
+        results: await filterRestrictedResults(req.user, tmdb, mappedResults),
       });
     } catch (e) {
       logger.debug('Something went wrong retrieving movies by keyword', {
@@ -878,7 +888,7 @@ discoverRoutes.get<{ keywordId: string }>(
 discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
   '/genreslider/movie',
   async (req, res, next) => {
-    const tmdb = new TheMovieDb();
+    const tmdb = withParentalFilter(new TheMovieDb(), req.user);
 
     try {
       const mappedGenres: GenreSliderItem[] = [];
@@ -925,7 +935,7 @@ discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
 discoverRoutes.get<{ language: string }, GenreSliderItem[]>(
   '/genreslider/tv',
   async (req, res, next) => {
-    const tmdb = new TheMovieDb();
+    const tmdb = withParentalFilter(new TheMovieDb(), req.user);
 
     try {
       const mappedGenres: GenreSliderItem[] = [];

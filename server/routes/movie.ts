@@ -182,6 +182,13 @@ movieRoutes.get('/:id/ratings', async (req, res, next) => {
       movieId: Number(req.params.id),
     });
 
+    if (isTitleBlocked(req.user, 'movie', movie)) {
+      return next({
+        status: 403,
+        message: 'This title is not available for this user.',
+      });
+    }
+
     const rtratings = await rtapi.getMovieRatings(
       movie.title,
       Number(movie.release_date.slice(0, 4))
@@ -220,6 +227,13 @@ movieRoutes.get('/:id/ratingscombined', async (req, res, next) => {
     const movie = await tmdb.getMovie({
       movieId: Number(req.params.id),
     });
+
+    if (isTitleBlocked(req.user, 'movie', movie)) {
+      return next({
+        status: 403,
+        message: 'This title is not available for this user.',
+      });
+    }
 
     const rtratings = await rtapi.getMovieRatings(
       movie.title,

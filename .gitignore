@@ -13,6 +13,9 @@ report.xml
 /out/
 /next-env.d.ts
 
+# next telemetry config written by `next telemetry disable` (postinstall)
+/cache/
+
 # production
 /build
 

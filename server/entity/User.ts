@@ -49,9 +49,20 @@ export class User {
     'jellyfinAuthToken',
     'plexToken',
     'settings',
+    // The parental limits are sensitive: without this every logged-in user
+    // could read every child's date of birth via GET /user or a nested
+    // requestedBy in request JSON.
+    'maxParentalRating',
+    'dateOfBirth',
+    'blockedGenres',
   ];
 
-  static readonly serializationExcludedFields: string[] = ['settings'];
+  static readonly serializationExcludedFields: string[] = [
+    'settings',
+    'maxParentalRating',
+    'dateOfBirth',
+    'blockedGenres',
+  ];
 
   public displayName: string;
 
@@ -137,9 +148,10 @@ export class User {
   public tvQuotaDays?: number;
 
   /**
-   * Admin-set maximum content rating (0, 6, 12, 16, 18). null/undefined =
-   * unrestricted. Combined with the derived rating from dateOfBirth via the
-   * stricter value (see server/lib/parentalRatings.ts).
+   * Admin-set maximum content rating (0, 6, 12, 16). null/undefined =
+   * unrestricted. A stored dateOfBirth is authoritative and derives the cap;
+   * this explicit rating applies only when no dateOfBirth is set (see
+   * server/lib/parentalRatings.ts).
    */
   @Column({ type: 'integer', nullable: true })
   public maxParentalRating?: number | null;

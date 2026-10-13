@@ -11,6 +11,7 @@ import {
   RequestPermissionError,
 } from '@server/entity/MediaRequest';
 import { User } from '@server/entity/User';
+import { ParentalRestrictionError } from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import { Permission } from './permissions';
 
@@ -173,6 +174,7 @@ class WatchlistSync {
           case DuplicateMediaRequestError:
           case QuotaRestrictedError:
           case NoSeasonsAvailableError:
+          case ParentalRestrictionError:
             logger.debug('Failed to create media request from watchlist', {
               label: 'Watchlist Sync',
               userId: user.id,

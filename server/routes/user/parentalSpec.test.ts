@@ -6,17 +6,9 @@ import express from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
 import request from 'supertest';
 
-/**
- * The user-settings route tests mount the router without the OpenAPI
- * validator, so a body can be accepted there and still be rejected in
- * production. That gap shipped a bug once: `maxParentalRating` was declared
- * `nullable: true` with `enum: [0, 6, 12, 16, 18]`, and because `nullable`
- * widens the type without exempting the value from `enum`, submitting
- * "Unrestricted" (null) failed validation and the form refused to save.
- *
- * These tests run the real spec against a stub handler.
- */
-const API_SPEC_PATH = path.join(process.cwd(), 'seerr-api.yml');
+// The route tests mount the router without the OpenAPI validator, so these
+// tests run the real spec against a stub handler.
+const API_SPEC_PATH = path.join(__dirname, '../../../seerr-api.yml');
 const ENDPOINT = '/api/v1/user/4/settings/parental';
 
 function specApp() {
@@ -60,7 +52,7 @@ describe('parental limits spec', () => {
   });
 
   it('accepts every offered FSK tier', async () => {
-    for (const rating of [0, 6, 12, 16, 18]) {
+    for (const rating of [0, 6, 12, 16]) {
       const res = await request(app)
         .post(ENDPOINT)
         .send({ maxParentalRating: rating, dateOfBirth: null });
@@ -70,11 +62,13 @@ describe('parental limits spec', () => {
   });
 
   it('rejects a rating outside the offered tiers', async () => {
-    const res = await request(app)
-      .post(ENDPOINT)
-      .send({ maxParentalRating: 13, dateOfBirth: null });
+    for (const rating of [13, 18]) {
+      const res = await request(app)
+        .post(ENDPOINT)
+        .send({ maxParentalRating: rating, dateOfBirth: null });
 
-    assert.strictEqual(res.status, 400);
+      assert.strictEqual(res.status, 400, `FSK ${rating} was accepted`);
+    }
   });
 
   it('accepts an ISO date of birth and rejects a malformed one', async () => {

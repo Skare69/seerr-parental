@@ -11,38 +11,21 @@ export const PARENTAL_COUNTRY = 'DE';
 
 export class ParentalRestrictionError extends Error {}
 
-export { fskFromAge } from '@server/lib/fskAge';
-
-// ponytail: memo never evicted — fine for a family instance; clear() if user count grows
-const dailyMemo = new Map<string, number | null>();
-
 /**
  * Effective per-user maximum FSK rating. A stored date of birth is
  * authoritative — it derives the cap and ages up on its own — and the explicit
  * admin rating applies only when no date of birth is set (the two are mutually
- * exclusive on write). null = unrestricted.
+ * exclusive on write). null = unrestricted. Fixed caps >= 18 also mean
+ * unrestricted: FSK 18 no longer exists as a tier, adults are simply
+ * unrestricted (an 18 cap only hid unrated titles).
  */
 export function getEffectiveMaxRating(user?: User): number | null {
   if (!user) return null;
 
-  // The key carries both inputs, so an admin's change takes effect on the next
-  // request instead of after UTC midnight, while the date still bounds the
-  // age derivation to one computation per day.
-  const key = [
-    user.id,
-    new Date().toISOString().slice(0, 10),
-    user.dateOfBirth ?? '',
-    user.maxParentalRating ?? '',
-  ].join(':');
-  const memo = dailyMemo.get(key);
-  if (memo !== undefined) return memo;
-
   const cap = user.dateOfBirth
     ? fskFromDob(user.dateOfBirth)
     : (user.maxParentalRating ?? null);
-
-  dailyMemo.set(key, cap);
-  return cap;
+  return cap !== null && cap < 18 ? cap : null;
 }
 
 function certNumber(cert: string): number | null {
@@ -53,10 +36,12 @@ function certNumber(cert: string): number | null {
 /** Numeric FSK rating of a title in PARENTAL_COUNTRY; null = unknown. */
 export function extractCertNumber(
   mediaType: 'movie' | 'tv',
-  details: TmdbMovieDetails | TmdbTvDetails
+  details:
+    | Pick<TmdbMovieDetails, 'release_dates'>
+    | Pick<TmdbTvDetails, 'content_ratings'>
 ): number | null {
-  if (mediaType === 'movie') {
-    const de = (details as TmdbMovieDetails).release_dates?.results?.find(
+  if (mediaType === 'movie' && 'release_dates' in details) {
+    const de = details.release_dates?.results?.find(
       (r) => r.iso_3166_1 === PARENTAL_COUNTRY
     );
     if (!de) return null;
@@ -65,11 +50,13 @@ export function extractCertNumber(
       .filter((v): v is number => v !== null);
     return values.length ? Math.max(...values) : null;
   }
-
-  const de = (details as TmdbTvDetails).content_ratings?.results?.find(
-    (r) => r.iso_3166_1 === PARENTAL_COUNTRY
-  );
-  return de ? certNumber(de.rating) : null;
+  if (mediaType === 'tv' && 'content_ratings' in details) {
+    const de = details.content_ratings?.results?.find(
+      (r) => r.iso_3166_1 === PARENTAL_COUNTRY
+    );
+    return de ? certNumber(de.rating) : null;
+  }
+  return null;
 }
 
 export function isOverCap(cert: number | null, cap: number): boolean {
@@ -77,17 +64,23 @@ export function isOverCap(cert: number | null, cap: number): boolean {
   return cert === null || cert > cap;
 }
 
+/**
+ * A title's rating for the list filters. Fetches only the rating data, never
+ * the full details, and caches it for a week in its own cache tier.
+ */
 export async function titleCertNumber(
   tmdb: TheMovieDb,
   mediaType: 'movie' | 'tv',
   id: number
 ): Promise<number | null> {
   try {
-    const details =
-      mediaType === 'movie'
-        ? await tmdb.getMovie({ movieId: id })
-        : await tmdb.getTvShow({ tvId: id });
-    return extractCertNumber(mediaType, details);
+    return mediaType === 'movie'
+      ? extractCertNumber(mediaType, {
+          release_dates: await tmdb.getParentalReleaseDates(id),
+        })
+      : extractCertNumber(mediaType, {
+          content_ratings: await tmdb.getParentalContentRatings(id),
+        });
   } catch {
     return null; // fail closed on lookup errors
   }
@@ -143,9 +136,9 @@ export function isTitleBlocked(
 }
 
 /**
- * Post-fetch redaction for endpoints TMDB cannot filter server-side
- * (search, trending, recommendations, similar). Persons/collections pass
- * through — the content itself is gated by the detail/request checks.
+ * Post-fetch redaction for lists TMDB cannot filter server-side (search,
+ * trending, recommendations, similar, keyword, collection parts, person
+ * credits). Person entries pass through.
  */
 export async function filterRestrictedResults<
   T extends { id: number; mediaType: string; genreIds?: number[] },

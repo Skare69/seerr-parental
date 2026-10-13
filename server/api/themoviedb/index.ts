@@ -3,6 +3,7 @@ import type { TvShowProvider } from '@server/api/provider';
 import type { CacheStore } from '@server/lib/cache';
 import cacheManager from '@server/lib/cache';
 import {
+  PARENTAL_COUNTRY,
   capToCertification,
   genreBlocked,
   isOverCap,
@@ -20,6 +21,7 @@ import type {
   TmdbKeywordSearchResponse,
   TmdbLanguage,
   TmdbMovieDetails,
+  TmdbMovieReleaseResult,
   TmdbNetwork,
   TmdbPersonCombinedCredits,
   TmdbPersonDetails,
@@ -30,6 +32,7 @@ import type {
   TmdbSearchTvResponse,
   TmdbSeasonWithEpisodes,
   TmdbTvDetails,
+  TmdbTvRatingResult,
   TmdbTvScanDetails,
   TmdbUpcomingMoviesResponse,
   TmdbWatchProviderDetails,
@@ -149,6 +152,10 @@ const TV_DETAILS_TTL = 43200;
 // Scan lookups read an entry once and never again.
 const SCAN_TTL = 900;
 
+// Age ratings rarely change once set. Flushing the Age Ratings cache picks up
+// a late one sooner.
+const RATINGS_TTL = 604800;
+
 const TV_DETAILS_APPEND_TO_RESPONSE =
   'aggregate_credits,credits,external_ids,keywords,videos,content_ratings,watch/providers';
 
@@ -179,8 +186,17 @@ const stripUnreadTvCredits = <T>(data: T): T => {
   return data;
 };
 
+// The parental list filters read one country's rating, so only that is cached.
+const keepParentalCountry = <T extends { results: { iso_3166_1: string }[] }>(
+  data: T
+): T => ({
+  ...data,
+  results: data.results.filter((r) => r.iso_3166_1 === PARENTAL_COUNTRY),
+});
+
 class TheMovieDb extends ExternalAPI implements TvShowProvider {
   private scanCache = cacheManager.getCache('tmdbscan').data;
+  private ratingsCache = cacheManager.getCache('tmdbratings').data;
   private locale: string;
   private discoverRegion?: string;
   private originalLanguage?: string;
@@ -196,6 +212,26 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     maxCert: number | null;
     blockedGenres?: number[];
   };
+
+  /**
+   * While a cap is set, a caller-supplied DE `certification.lte` that is
+   * stricter than the cap is kept; every other caller-supplied certification
+   * param is dropped. Returns undefined when the caller's value must not
+   * survive.
+   */
+  private cappedCallerLte(
+    callerLte?: string,
+    callerCountry?: string
+  ): string | undefined {
+    const cap = this.parentalFilter?.maxCert ?? null;
+    if (cap === null || callerCountry !== PARENTAL_COUNTRY || !callerLte) {
+      return undefined;
+    }
+    // ponytail: numeric compare assumes DE certifications are plain numbers
+    // ("0".."18"); widen here if TMDB adds labelled DE tiers.
+    const value = Number(callerLte);
+    return Number.isNaN(value) || value >= cap ? undefined : String(value);
+  }
   constructor({
     discoverRegion,
     originalLanguage,
@@ -780,7 +816,11 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           ...(parentalLte
             ? {
                 certification_country: this.parentalFilter?.country,
-                'certification.lte': parentalLte,
+                'certification.lte':
+                  this.cappedCallerLte(
+                    certificationLte,
+                    certificationCountry
+                  ) ?? parentalLte,
               }
             : {
                 certification: certification,
@@ -892,7 +932,11 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           ...(parentalLte
             ? {
                 certification_country: this.parentalFilter?.country,
-                'certification.lte': parentalLte,
+                'certification.lte':
+                  this.cappedCallerLte(
+                    certificationLte,
+                    certificationCountry
+                  ) ?? parentalLte,
               }
             : {
                 certification: certification,
@@ -1413,6 +1457,32 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
       );
     }
   };
+
+  /**
+   * Rating data only, for the parental list filters: a small fraction of the
+   * full details payload, and keyed without a language so every locale shares
+   * one entry. Only the PARENTAL_COUNTRY entry is kept.
+   */
+  public getParentalReleaseDates = (
+    movieId: number
+  ): Promise<TmdbMovieReleaseResult> =>
+    this.get<TmdbMovieReleaseResult>(
+      `/movie/${movieId}/release_dates`,
+      {},
+      RATINGS_TTL,
+      { cache: this.ratingsCache, transform: keepParentalCountry }
+    );
+
+  /** The TV counterpart of getParentalReleaseDates. */
+  public getParentalContentRatings = (
+    tvId: number
+  ): Promise<TmdbTvRatingResult> =>
+    this.get<TmdbTvRatingResult>(
+      `/tv/${tvId}/content_ratings`,
+      {},
+      RATINGS_TTL,
+      { cache: this.ratingsCache, transform: keepParentalCountry }
+    );
 
   public async getKeywordDetails({
     keywordId,

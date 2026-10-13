@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { before, beforeEach, describe, it, mock } from 'node:test';
+import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
 import TheMovieDb from '@server/api/themoviedb';
 import type {
@@ -41,7 +41,7 @@ const sendNotificationMock = mock.method(
   async () => undefined
 ).mock;
 
-const getMovieImpl: (args: {
+let getMovieImpl: (args: {
   movieId: number;
   language?: string;
 }) => Promise<TmdbMovieDetails> = async ({ movieId }) => fakeTmdbMovie(movieId);
@@ -1626,5 +1626,167 @@ describe('DELETE /request/:requestId, orphaned season status reset', () => {
     const updated = await mediaRepo.findOneOrFail({ where: { id: media.id } });
     assert.strictEqual(updated.seasons[0].status, MediaStatus.UNKNOWN);
     assert.strictEqual(updated.seasons[0].status4k, MediaStatus.PROCESSING);
+  });
+});
+
+describe('POST /request, parental rating limits', () => {
+  const originalGetMovie = getMovieImpl;
+
+  function movieWithCert(
+    tmdbId: number,
+    certification: string
+  ): TmdbMovieDetails {
+    return {
+      ...fakeTmdbMovie(tmdbId),
+      release_dates: {
+        results: [
+          {
+            iso_3166_1: 'DE',
+            release_dates: [
+              {
+                certification,
+                note: '',
+                release_date: '2020-01-01',
+                type: 4,
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as TmdbMovieDetails;
+  }
+
+  function useMovie(cert?: string): void {
+    getMovieImpl = cert
+      ? async ({ movieId }) => movieWithCert(movieId, cert)
+      : async ({ movieId }) => fakeTmdbMovie(movieId);
+  }
+
+  async function capUser(
+    email: string,
+    fields: Partial<
+      Pick<User, 'maxParentalRating' | 'dateOfBirth' | 'permissions'>
+    >
+  ): Promise<User> {
+    const userRepo = getRepository(User);
+    const user = await userRepo.findOneOrFail({ where: { email } });
+    Object.assign(user, fields);
+    return userRepo.save(user);
+  }
+
+  afterEach(() => {
+    getMovieImpl = originalGetMovie;
+  });
+
+  it('refuses a capped demo request over the cap and writes no rows', async () => {
+    useMovie('16');
+    await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST,
+      maxParentalRating: 12,
+    });
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91001,
+    });
+
+    assert.strictEqual(res.status, 403);
+    const mediaRepo = getRepository(Media);
+    const requestRepo = getRepository(MediaRequest);
+    assert.strictEqual(await mediaRepo.count({ where: { tmdbId: 91001 } }), 0);
+    assert.strictEqual(
+      await requestRepo.count({ where: { media: { tmdbId: 91001 } } }),
+      0
+    );
+  });
+
+  it('refuses an unrated title over any cap (fail closed)', async () => {
+    useMovie(undefined); // no DE release dates at all
+    await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST,
+      maxParentalRating: 16,
+    });
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91002,
+    });
+
+    assert.strictEqual(res.status, 403);
+  });
+
+  it('allows a title exactly at the cap', async () => {
+    useMovie('12');
+    await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST,
+      maxParentalRating: 12,
+    });
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91003,
+    });
+
+    assert.strictEqual(res.status, 201);
+  });
+
+  it('allows an admin with MANAGE_REQUESTS to request for a capped user', async () => {
+    useMovie('16');
+    const demo = await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST,
+      maxParentalRating: 12,
+    });
+
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91004,
+      userId: demo.id,
+    });
+
+    assert.strictEqual(res.status, 201);
+  });
+
+  it('refuses a capped user who holds MANAGE_REQUESTS requesting for themselves', async () => {
+    useMovie('16');
+    await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST | Permission.MANAGE_REQUESTS,
+      maxParentalRating: 12,
+    });
+
+    const agent = await loginAs('demo@seerr.dev', 'test1234');
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91005,
+    });
+
+    assert.strictEqual(res.status, 403);
+  });
+
+  it('omits dateOfBirth and maxParentalRating from the requestedBy response', async () => {
+    useMovie('16');
+    await capUser('demo@seerr.dev', {
+      permissions: Permission.REQUEST,
+      maxParentalRating: 12,
+      dateOfBirth: '2014-10-13',
+    });
+
+    const agent = await loginAs('admin@seerr.dev', 'test1234');
+    const demo = await getRepository(User).findOneOrFail({
+      where: { email: 'demo@seerr.dev' },
+    });
+    const res = await agent.post('/request').send({
+      mediaType: MediaType.MOVIE,
+      mediaId: 91006,
+      userId: demo.id,
+    });
+
+    assert.strictEqual(res.status, 201);
+    assert.ok(res.body.requestedBy);
+    assert.strictEqual('dateOfBirth' in res.body.requestedBy, false);
+    assert.strictEqual('maxParentalRating' in res.body.requestedBy, false);
   });
 });

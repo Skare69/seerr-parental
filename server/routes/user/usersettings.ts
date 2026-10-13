@@ -11,6 +11,7 @@ import type {
   UserSettingsNotificationsResponse,
   UserSettingsParentalResponse,
 } from '@server/interfaces/api/userSettingsInterfaces';
+import { isValidDob } from '@server/lib/fskAge';
 import {
   getBlockedGenres,
   getEffectiveMaxRating,
@@ -62,7 +63,6 @@ userSettingsRoutes.get<{ id: string }, UserSettingsGeneralResponse>(
         movieQuotaDays: user.movieQuotaDays,
         tvQuotaLimit: user.tvQuotaLimit,
         tvQuotaDays: user.tvQuotaDays,
-        // Parental limits live on their own endpoint: /settings/parental
         globalMovieQuotaDays: defaultQuotas.movie.quotaDays,
         globalMovieQuotaLimit: defaultQuotas.movie.quotaLimit,
         globalTvQuotaDays: defaultQuotas.tv.quotaDays,
@@ -799,6 +799,21 @@ userSettingsRoutes.get<{ id: string }, UserSettingsParentalResponse>(
         return next({ status: 404, message: 'User not found.' });
       }
 
+      // The owner account and admin accounts are protected from other
+      // non-owner users, mirroring the /password routes.
+      if (
+        (user.id === 1 && req.user?.id !== 1) ||
+        (user.hasPermission(Permission.ADMIN) &&
+          user.id !== req.user?.id &&
+          req.user?.id !== 1)
+      ) {
+        return next({
+          status: 403,
+          message:
+            "You do not have permission to view this user's parental limits.",
+        });
+      }
+
       return res.status(200).json({
         maxParentalRating: user.maxParentalRating ?? null,
         dateOfBirth: user.dateOfBirth ?? null,
@@ -834,10 +849,46 @@ userSettingsRoutes.post<
         return next({ status: 404, message: 'User not found.' });
       }
 
+      // The owner account and admin accounts are protected from other
+      // non-owner users, mirroring the /password routes.
+      if (
+        (user.id === 1 && req.user?.id !== 1) ||
+        (user.hasPermission(Permission.ADMIN) &&
+          user.id !== req.user?.id &&
+          req.user?.id !== 1)
+      ) {
+        return next({
+          status: 403,
+          message:
+            "You do not have permission to modify this user's parental limits.",
+        });
+      }
+
+      // A MANAGE_USERS non-admin must not lift the cap on their own account;
+      // admins may still set their own limits (deliberate fork decision).
+      if (
+        user.id === req.user?.id &&
+        !req.user.hasPermission(Permission.ADMIN)
+      ) {
+        return next({
+          status: 403,
+          message:
+            'You do not have permission to modify your own parental limits.',
+        });
+      }
+
+      const dateOfBirth = req.body.dateOfBirth || null;
+      if (dateOfBirth && !isValidDob(dateOfBirth)) {
+        return next({
+          status: 400,
+          message:
+            'Invalid date of birth. Use a real date in YYYY-MM-DD format that is today or earlier.',
+        });
+      }
+
       // A date of birth and a fixed rating are mutually exclusive: the date
       // derives the cap and ages up on its own, so it wins and clears the
       // fixed value. The UI enforces the same rule; this is the backstop.
-      const dateOfBirth = req.body.dateOfBirth || null;
       user.dateOfBirth = dateOfBirth;
       user.maxParentalRating = dateOfBirth
         ? null

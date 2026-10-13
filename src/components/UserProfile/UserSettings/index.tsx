@@ -93,6 +93,11 @@ const UserSettings = ({ children }: UserSettingsProps) => {
       route: '/settings/parental',
       regex: /\/settings\/parental/,
       requiredPermission: Permission.MANAGE_USERS,
+      // A user without ADMIN can no longer save their own limits, so the
+      // tab is only shown for their own settings when they are an admin.
+      hidden:
+        currentUser?.id === user.id &&
+        !hasPermission(Permission.ADMIN, currentUser?.permissions ?? 0),
     },
   ];
 

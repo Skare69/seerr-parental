@@ -1,6 +1,7 @@
 import TheMovieDb from '@server/api/themoviedb';
 import { MediaType } from '@server/constants/media';
 import Media from '@server/entity/Media';
+import { filterRestrictedResults } from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import { mapCollection } from '@server/models/Collection';
 import { Router } from 'express';
@@ -25,7 +26,14 @@ collectionRoutes.get<{ id: string }>('/:id', async (req, res, next) => {
       { includeActiveRequest: true }
     );
 
-    return res.status(200).json(mapCollection(collection, media));
+    const mappedCollection = mapCollection(collection, media);
+    mappedCollection.parts = await filterRestrictedResults(
+      req.user,
+      tmdb,
+      mappedCollection.parts
+    );
+
+    return res.status(200).json(mappedCollection);
   } catch (e) {
     logger.debug('Something went wrong retrieving collection', {
       label: 'API',

@@ -1,5 +1,6 @@
 import useToasts from '@app/hooks/useToasts';
 import globalMessages from '@app/i18n/globalMessages';
+import { decideDiscoverPaging } from '@app/utils/discoverPagingHelper';
 import { MediaStatus } from '@server/constants/media';
 import { useEffect } from 'react';
 import { useIntl } from 'react-intl';
@@ -153,12 +154,11 @@ const useDiscover = <
     });
   }
 
-  const isEmpty = !isLoadingInitialData && titles?.length === 0;
-  const isReachingEnd =
-    isEmpty ||
-    (!!data && (data[data?.length - 1]?.results.length ?? 0) < 20) ||
-    (!!data && (data[data?.length - 1]?.totalResults ?? 0) <= size * 20) ||
-    (!!data && (data[data?.length - 1]?.totalResults ?? 0) < 41);
+  const { isEmpty: helperIsEmpty, isReachingEnd: helperIsReachingEnd } =
+    decideDiscoverPaging(data ?? [], size, titles.length);
+
+  const isEmpty = !isLoadingInitialData && helperIsEmpty;
+  const isReachingEnd = helperIsReachingEnd;
 
   useEffect(() => {
     if (error && titles.length) {

@@ -1,5 +1,6 @@
 import TheMovieDb from '@server/api/themoviedb';
 import Media from '@server/entity/Media';
+import { filterRestrictedResults } from '@server/lib/parentalRatings';
 import logger from '@server/logger';
 import {
   mapCastCredits,
@@ -41,45 +42,63 @@ personRoutes.get('/:id/combined_credits', async (req, res, next) => {
       language: (req.query.language as string) ?? req.locale,
     });
 
+    // Credits carry no certification data, so each one is checked against the
+    // cap with a rating lookup before it is mapped. Genre ids ride along, so
+    // the genre blocklist needs no lookup.
+    const [cast, crew] = await Promise.all([
+      filterRestrictedResults(
+        req.user,
+        tmdb,
+        combinedCredits.cast
+          .filter((result) => result.media_type)
+          .map((result) => ({
+            ...result,
+            mediaType: result.media_type!,
+            genreIds: result.genre_ids,
+          }))
+      ),
+      filterRestrictedResults(
+        req.user,
+        tmdb,
+        combinedCredits.crew
+          .filter((result) => result.media_type)
+          .map((result) => ({
+            ...result,
+            mediaType: result.media_type!,
+            genreIds: result.genre_ids,
+          }))
+      ),
+    ]);
+
     const castMedia = await Media.getRelatedMedia(
       req.user,
-      combinedCredits.cast
-        .filter((result) => result.media_type)
-        .map((result) => ({
-          tmdbId: result.id,
-          mediaType: result.media_type!,
-        }))
+      cast.map((result) => ({ tmdbId: result.id, mediaType: result.mediaType }))
     );
 
     const crewMedia = await Media.getRelatedMedia(
       req.user,
-      combinedCredits.crew
-        .filter((result) => result.media_type)
-        .map((result) => ({
-          tmdbId: result.id,
-          mediaType: result.media_type!,
-        }))
+      crew.map((result) => ({ tmdbId: result.id, mediaType: result.mediaType }))
     );
 
     return res.status(200).json({
-      cast: combinedCredits.cast
+      cast: cast
         .map((result) =>
           mapCastCredits(
             result,
             castMedia.find(
               (med) =>
-                med.tmdbId === result.id && med.mediaType === result.media_type
+                med.tmdbId === result.id && med.mediaType === result.mediaType
             )
           )
         )
         .filter((item) => !item.adult && item.character !== 'Thanks'),
-      crew: combinedCredits.crew
+      crew: crew
         .map((result) =>
           mapCrewCredits(
             result,
             crewMedia.find(
               (med) =>
-                med.tmdbId === result.id && med.mediaType === result.media_type
+                med.tmdbId === result.id && med.mediaType === result.mediaType
             )
           )
         )

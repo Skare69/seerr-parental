@@ -220,13 +220,14 @@ components:
         maxParentalRating:
           type: number
           nullable: true
-          description: 'Fixed maximum allowed content rating (FSK 0, 6, 12, 16, 18); null = unrestricted. Cleared when dateOfBirth is set.'
+          description: 'Fixed maximum allowed content rating (FSK 0, 6, 12, 16); null = unrestricted. Cleared when dateOfBirth is set.'
           # null must be listed explicitly: `nullable: true` widens the type but
           # does NOT exempt the value from `enum` (OAS 3.0 / ajv semantics).
-          enum: [0, 6, 12, 16, 18, null]
+          enum: [0, 6, 12, 16, null]
           example: 12
         dateOfBirth:
           type: string
+          format: date
           nullable: true
           pattern: '^\d{4}-\d{2}-\d{2}$'
           description: 'Date of birth (YYYY-MM-DD). When set, the cap is derived from the age and rises at each birthday.'
@@ -5511,6 +5512,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserSettingsParental'
+        '403':
+          description: Requires the MANAGE_USERS permission, and the target user is the owner or an admin
+        '404':
+          description: User not found
     post:
       summary: Update parental limits for a user
       description: |
@@ -5545,6 +5550,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserSettingsParental'
+        '400':
+          description: Invalid date of birth
+        '403':
+          description: Requires the MANAGE_USERS permission, the target user is the owner or an admin, and a non-admin cannot edit their own limits
+        '404':
+          description: User not found
   /user/{userId}/watch_data:
     get:
       summary: Get watch data

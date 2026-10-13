@@ -175,12 +175,18 @@ export class MediaRequest {
         ? await tmdb.getMovie({ movieId: requestBody.mediaId })
         : await tmdb.getTvShow({ tvId: requestBody.mediaId });
 
+    // A limited user may not request a blocked title for themselves; a
+    // manager requesting for ANOTHER user may. Consistent with the
+    // detail-route 403: a limited admin requesting for themselves is refused.
     if (
-      !user.hasPermission(Permission.MANAGE_REQUESTS) &&
       isTitleBlocked(
         requestUser,
         requestBody.mediaType as 'movie' | 'tv',
         tmdbMedia
+      ) &&
+      !(
+        requestUser.id !== user.id &&
+        user.hasPermission(Permission.MANAGE_REQUESTS)
       )
     ) {
       logger.warn('Request for media blocked by parental limits', {
